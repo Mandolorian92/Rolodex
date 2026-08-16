@@ -127,7 +127,7 @@ export async function getProduct(priceChartingId: string): Promise<PriceCharting
  * `seller` is the PriceCharting user id, visible in the URL of a user's collection page
  * (pricecharting.com/offers?...&seller=THIS_PART&status=collection).
  */
-export async function getOffers(params: {
+export interface GetOffersParams {
   seller?: string;
   buyer?: string;
   status: "available" | "sold" | "ended" | "collection";
@@ -136,13 +136,48 @@ export async function getOffers(params: {
   "condition-id"?: string;
   genre?: string;
   sort?: "name" | "starts" | "lowest-price";
-}): Promise<PriceChartingOffer[]> {
+  page?: number;
+}
+
+export async function getOffers(params: GetOffersParams): Promise<PriceChartingOffer[]> {
   const query: Record<string, string> = { status: params.status };
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && key !== "status") query[key] = String(value);
   }
   const data = await pcFetch<PriceChartingOffersResult>("/offers", query);
   return data.offers ?? [];
+}
+
+/** Safety cap on how many pages getAllOffers will follow, regardless of what the API returns. */
+const MAX_OFFER_PAGES = 40;
+
+/**
+ * Like getOffers, but follows a `page` parameter until results run out — a single call to
+ * /api/offers appears to cap out around 30 items (observed against a real 30+ item
+ * collection), and the docs don't document a page size or pagination scheme for this
+ * endpoint. This is a defensive best-effort loop: it stops as soon as a page comes back
+ * empty, or comes back identical to page 1 (a sign `page` isn't actually being honored,
+ * so we stop rather than loop forever re-fetching the same results).
+ */
+export async function getAllOffers(params: Omit<GetOffersParams, "page">): Promise<PriceChartingOffer[]> {
+  const all: PriceChartingOffer[] = [];
+  let firstIdOfPage1: string | null = null;
+
+  for (let page = 1; page <= MAX_OFFER_PAGES; page++) {
+    const batch = await getOffers({ ...params, page });
+    if (batch.length === 0) break;
+
+    const firstId = String(batch[0].id);
+    if (page === 1) {
+      firstIdOfPage1 = firstId;
+    } else if (firstId === firstIdOfPage1) {
+      break; // same results as page 1 — `page` isn't being honored, stop here
+    }
+
+    all.push(...batch);
+  }
+
+  return all;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { PriceSource } from "@/generated/prisma/client";
-import { getOffers, type PriceChartingOffer } from "@/lib/pricecharting";
+import { getAllOffers, type PriceChartingOffer } from "@/lib/pricecharting";
 import { parseConditionString, CONDITION_TO_PRICE_TYPE } from "@/lib/grades";
 
 export interface ImportSummary {
@@ -22,17 +22,18 @@ function getSellerId(explicit?: string): string {
 }
 
 /**
- * Import a user's existing PriceCharting collection (pricecharting.com/offers?...&status=collection)
- * in one Marketplace API call. This is the source of truth for what's owned going forward:
- * re-running it overwrites quantity/condition from PriceCharting rather than adding to it,
- * so it stays in sync if you edit your collection there.
+ * Import a user's existing PriceCharting collection (pricecharting.com/offers?...&status=collection),
+ * paging through as many /api/offers calls as it takes to get everything (see getAllOffers).
+ * This is the source of truth for what's owned going forward: re-running it overwrites
+ * quantity/condition from PriceCharting rather than adding to it, so it stays in sync if
+ * you edit your collection there.
  *
  * Each offer already includes a current `value`, so we seed an initial PriceSnapshot per
  * card without needing a separate (rate-limited) /api/product call per card.
  */
 export async function importPriceChartingCollection(sellerId?: string): Promise<ImportSummary> {
   const seller = getSellerId(sellerId);
-  const offers = await getOffers({ seller, status: "collection" });
+  const offers = await getAllOffers({ seller, status: "collection" });
 
   const summary: ImportSummary = {
     offersFound: offers.length,
