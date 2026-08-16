@@ -1,0 +1,127 @@
+// Prisma schema for Rolodex — a price-tracking "ticker" for trading card collections.
+// Data sources: PriceCharting (catalog + aggregated market prices) and eBay (recent sold comps).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// A single card/product as known by PriceCharting's catalog.
+model Card {
+  id              String   @id @default(cuid())
+  priceChartingId String   @unique @map("pricecharting_id")
+  name            String
+  consoleName     String?  @map("console_name") // e.g. "Pokemon Base Set", "Magic: Alpha"
+  category        String? // e.g. "pokemon-card", "sports-card", "magic-card"
+  imageUrl        String?  @map("image_url")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  collectionItems CollectionItem[]
+  priceSnapshots  PriceSnapshot[]
+  ebaySales       EbaySale[]
+  alerts          Alert[]
+
+  @@map("cards")
+}
+
+// A card the user owns, with quantity/condition/cost-basis.
+model CollectionItem {
+  id            String    @id @default(cuid())
+  cardId        String    @map("card_id")
+  card          Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  quantity      Int       @default(1)
+  condition     Condition @default(NEAR_MINT)
+  purchasePrice Int?      @map("purchase_price") // cents
+  purchasedAt   DateTime? @map("purchased_at")
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@unique([cardId, condition])
+  @@map("collection_items")
+}
+
+enum Condition {
+  UNGRADED
+  NEAR_MINT
+  LIGHTLY_PLAYED
+  MODERATELY_PLAYED
+  HEAVILY_PLAYED
+  DAMAGED
+  GRADED_10
+  GRADED_9
+  GRADED_8
+  GRADED_7
+}
+
+// A point-in-time price observation for a card, from a given source/price type.
+// This is the time series that powers the ticker and trend engine.
+model PriceSnapshot {
+  id         String      @id @default(cuid())
+  cardId     String      @map("card_id")
+  card       Card        @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  source     PriceSource
+  priceType  String      @map("price_type") // e.g. "loose", "cib", "new", "graded-9", "graded-10"
+  price      Int // cents
+  capturedAt DateTime    @default(now()) @map("captured_at")
+
+  @@index([cardId, priceType, capturedAt])
+  @@map("price_snapshots")
+}
+
+enum PriceSource {
+  PRICECHARTING
+  EBAY
+  MANUAL
+}
+
+// An individual sold listing pulled from eBay, used as raw comps alongside PriceCharting's
+// aggregate prices.
+model EbaySale {
+  id        String   @id @default(cuid())
+  cardId    String   @map("card_id")
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  title     String
+  price     Int // cents
+  itemUrl   String   @map("item_url")
+  imageUrl  String?  @map("image_url")
+  condition String?
+  soldAt    DateTime @map("sold_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([itemUrl])
+  @@index([cardId, soldAt])
+  @@map("ebay_sales")
+}
+
+// A generated signal — "trending up", "time to sell", etc — surfaced from the trend engine.
+model Alert {
+  id           String    @id @default(cuid())
+  cardId       String    @map("card_id")
+  card         Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  type         AlertType
+  priceType    String    @map("price_type")
+  message      String
+  changePct    Float     @map("change_pct")
+  fromPrice    Int       @map("from_price") // cents
+  toPrice      Int       @map("to_price") // cents
+  windowDays   Int       @map("window_days")
+  acknowledged Boolean   @default(false)
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([cardId, createdAt])
+  @@index([acknowledged, createdAt])
+  @@map("alerts")
+}
+
+enum AlertType {
+  TRENDING_UP
+  TRENDING_DOWN
+  SELL_SIGNAL
+  NEW_HIGH
+}
