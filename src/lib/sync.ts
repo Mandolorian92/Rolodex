@@ -1,27 +1,32 @@
 import { prisma } from "@/lib/prisma";
 import { PriceSource } from "@/generated/prisma/client";
 import { getProduct, extractPriceFields } from "@/lib/pricecharting";
-import { fetchSoldComps, isEbayConfigured } from "@/lib/ebay";
+import { syncPriceChartingSoldOffers, syncEbaySoldComps } from "@/lib/marketSales";
 import { evaluateCardTrends } from "@/lib/trends";
 import { notifyNewAlerts, type AlertWithCard } from "@/lib/notify";
 
 export interface CardSyncResult {
   cardId: string;
   cardName: string;
-  snapshotsCreated: number;
-  ebaySalesCreated: number;
+  guideSnapshotsCreated: number;
+  salesRecorded: number;
   alerts: AlertWithCard[];
   error?: string;
 }
 
-/** Refresh PriceCharting prices (and eBay sold comps, if configured) for a single card. */
+/**
+ * Refresh a single card's data: the guide price (per condition, from PriceCharting's
+ * Prices API), then real recent sold transactions (PriceCharting's own marketplace, and
+ * eBay if configured) — both feed the same PriceSnapshot timeline, so the trend engine
+ * treats an actual sale exactly like a guide-price move, at its real sale date.
+ */
 export async function syncCard(cardId: string): Promise<CardSyncResult> {
   const card = await prisma.card.findUniqueOrThrow({ where: { id: cardId } });
   const result: CardSyncResult = {
     cardId: card.id,
     cardName: card.name,
-    snapshotsCreated: 0,
-    ebaySalesCreated: 0,
+    guideSnapshotsCreated: 0,
+    salesRecorded: 0,
     alerts: [],
   };
 
@@ -31,40 +36,26 @@ export async function syncCard(cardId: string): Promise<CardSyncResult> {
 
     for (const [priceType, cents] of Object.entries(prices)) {
       await prisma.priceSnapshot.create({
-        data: { cardId: card.id, source: PriceSource.PRICECHARTING, priceType, price: cents },
+        data: { cardId: card.id, source: PriceSource.PRICECHARTING_GUIDE, priceType, price: cents },
       });
-      result.snapshotsCreated += 1;
+      result.guideSnapshotsCreated += 1;
     }
   } catch (err) {
     result.error = err instanceof Error ? err.message : String(err);
     return result;
   }
 
-  if (isEbayConfigured()) {
-    try {
-      const query = [card.consoleName, card.name].filter(Boolean).join(" ");
-      const sales = await fetchSoldComps(query);
-      for (const sale of sales) {
-        if (!sale.soldAt) continue;
-        await prisma.ebaySale.upsert({
-          where: { itemUrl: sale.itemUrl },
-          create: {
-            cardId: card.id,
-            title: sale.title,
-            price: sale.price,
-            itemUrl: sale.itemUrl,
-            imageUrl: sale.imageUrl,
-            condition: sale.condition,
-            soldAt: new Date(sale.soldAt),
-          },
-          update: {},
-        });
-        result.ebaySalesCreated += 1;
-      }
-    } catch (err) {
-      // eBay comps are a nice-to-have; don't fail the whole sync over them.
-      console.warn(`[sync] eBay comps failed for card ${card.id}:`, err);
-    }
+  try {
+    result.salesRecorded += await syncPriceChartingSoldOffers(card);
+  } catch (err) {
+    // Sold-offer data is a bonus on top of the guide price; don't fail the whole sync over it.
+    console.warn(`[sync] PriceCharting sold offers failed for card ${card.id}:`, err);
+  }
+
+  try {
+    result.salesRecorded += await syncEbaySoldComps(card);
+  } catch (err) {
+    console.warn(`[sync] eBay sold comps failed for card ${card.id}:`, err);
   }
 
   const alerts = await evaluateCardTrends(card.id);
@@ -86,7 +77,8 @@ export async function syncCollection(): Promise<CardSyncResult[]> {
 
   const results: CardSyncResult[] = [];
   for (const { cardId } of items) {
-    // Sequential on purpose: stay well under PriceCharting/eBay rate limits.
+    // Sequential on purpose: stay well under PriceCharting/eBay rate limits (two
+    // PriceCharting calls per card now — guide price, then sold offers).
     results.push(await syncCard(cardId));
   }
 

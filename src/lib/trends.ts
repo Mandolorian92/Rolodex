@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { AlertType, type PriceSnapshot } from "@/generated/prisma/client";
+import { AlertType, PriceSource, type PriceSnapshot } from "@/generated/prisma/client";
+import { formatCents, formatPriceType } from "@/lib/format";
 
 /** Minimum move (as a fraction, e.g. 0.10 = 10%) over 7 days to call something "trending". */
 const TRENDING_THRESHOLD = 0.1;
@@ -72,6 +73,16 @@ export function computeChangeStats(snapshots: PriceSnapshot[]): ChangeStats | nu
   };
 }
 
+/**
+ * A short clause noting when a price point came from an actual sale rather than
+ * PriceCharting's aggregate guide price — the concrete evidence behind a signal.
+ */
+function saleProvenance(snapshot: PriceSnapshot): string {
+  if (snapshot.source === PriceSource.EBAY_SALE) return " — based on a recent eBay sale";
+  if (snapshot.source === PriceSource.PRICECHARTING_SALE) return " — based on a recent marketplace sale";
+  return "";
+}
+
 async function recentlyAlerted(cardId: string, priceType: string, type: AlertType): Promise<boolean> {
   const cutoff = new Date(Date.now() - ALERT_COOLDOWN_HOURS * 60 * 60 * 1000);
   const existing = await prisma.alert.findFirst({
@@ -113,10 +124,12 @@ export async function evaluateCardTrends(cardId: string) {
       windowDays: number;
     }> = [];
 
+    const label = formatPriceType(priceType);
+
     if (stats.changePct7d !== null && stats.changePct7d >= TRENDING_THRESHOLD) {
       candidates.push({
         type: AlertType.TRENDING_UP,
-        message: `${priceType} price is up ${(stats.changePct7d * 100).toFixed(1)}% over the last 7 days`,
+        message: `${label} is up ${(stats.changePct7d * 100).toFixed(1)}% over the last 7 days, now ${formatCents(stats.latest.price)}${saleProvenance(stats.latest)}`,
         changePct: stats.changePct7d,
         fromPrice: Math.round(stats.latest.price / (1 + stats.changePct7d)),
         toPrice: stats.latest.price,
@@ -127,7 +140,7 @@ export async function evaluateCardTrends(cardId: string) {
     if (stats.changePct7d !== null && stats.changePct7d <= -TRENDING_THRESHOLD) {
       candidates.push({
         type: AlertType.TRENDING_DOWN,
-        message: `${priceType} price is down ${(Math.abs(stats.changePct7d) * 100).toFixed(1)}% over the last 7 days`,
+        message: `${label} is down ${(Math.abs(stats.changePct7d) * 100).toFixed(1)}% over the last 7 days, now ${formatCents(stats.latest.price)}${saleProvenance(stats.latest)}`,
         changePct: stats.changePct7d,
         fromPrice: Math.round(stats.latest.price / (1 + stats.changePct7d)),
         toPrice: stats.latest.price,
@@ -138,7 +151,7 @@ export async function evaluateCardTrends(cardId: string) {
     if (stats.isNewHigh && series.length > 1) {
       candidates.push({
         type: AlertType.NEW_HIGH,
-        message: `${priceType} price just hit a new high`,
+        message: `${label} just hit a new high of ${formatCents(stats.latest.price)}${saleProvenance(stats.latest)}`,
         changePct: stats.changePct30d ?? 0,
         fromPrice: series[series.length - 2].price,
         toPrice: stats.latest.price,
@@ -152,11 +165,11 @@ export async function evaluateCardTrends(cardId: string) {
 
     if (bigRun || pulledBackFromPeak) {
       const reason = pulledBackFromPeak
-        ? `pulled back ${(Math.abs(stats.pullbackFromPeakPct) * 100).toFixed(1)}% from its recent high — momentum may be turning`
-        : `up ${((stats.changePct30d ?? 0) * 100).toFixed(1)}% over 30 days — consider taking profit`;
+        ? `pulled back ${(Math.abs(stats.pullbackFromPeakPct) * 100).toFixed(1)}% from its recent high of ${formatCents(stats.peak.price)} — momentum may be turning`
+        : `up ${((stats.changePct30d ?? 0) * 100).toFixed(1)}% over 30 days to ${formatCents(stats.latest.price)} — consider taking profit`;
       candidates.push({
         type: AlertType.SELL_SIGNAL,
-        message: `${priceType} price ${reason}`,
+        message: `${label} ${reason}${saleProvenance(stats.latest)}`,
         changePct: pulledBackFromPeak ? stats.pullbackFromPeakPct : stats.changePct30d ?? 0,
         fromPrice: stats.peak.price,
         toPrice: stats.latest.price,

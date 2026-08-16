@@ -2,7 +2,7 @@
 CREATE TYPE "Condition" AS ENUM ('UNGRADED', 'NEAR_MINT', 'LIGHTLY_PLAYED', 'MODERATELY_PLAYED', 'HEAVILY_PLAYED', 'DAMAGED', 'GRADED_7', 'GRADED_8', 'GRADED_9', 'PSA_10', 'BGS_10', 'CGC_10', 'SGC_10');
 
 -- CreateEnum
-CREATE TYPE "PriceSource" AS ENUM ('PRICECHARTING', 'EBAY', 'MANUAL');
+CREATE TYPE "PriceSource" AS ENUM ('PRICECHARTING_GUIDE', 'PRICECHARTING_SALE', 'EBAY_SALE', 'MANUAL');
 
 -- CreateEnum
 CREATE TYPE "AlertType" AS ENUM ('TRENDING_UP', 'TRENDING_DOWN', 'SELL_SIGNAL', 'NEW_HIGH');
@@ -49,9 +49,10 @@ CREATE TABLE "price_snapshots" (
 );
 
 -- CreateTable
-CREATE TABLE "ebay_sales" (
+CREATE TABLE "market_sales" (
     "id" TEXT NOT NULL,
     "card_id" TEXT NOT NULL,
+    "source" "PriceSource" NOT NULL,
     "title" TEXT NOT NULL,
     "price" INTEGER NOT NULL,
     "item_url" TEXT NOT NULL,
@@ -60,7 +61,7 @@ CREATE TABLE "ebay_sales" (
     "sold_at" TIMESTAMP(3) NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "ebay_sales_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "market_sales_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -90,10 +91,10 @@ CREATE UNIQUE INDEX "collection_items_card_id_condition_key" ON "collection_item
 CREATE INDEX "price_snapshots_card_id_price_type_captured_at_idx" ON "price_snapshots"("card_id", "price_type", "captured_at");
 
 -- CreateIndex
-CREATE INDEX "ebay_sales_card_id_sold_at_idx" ON "ebay_sales"("card_id", "sold_at");
+CREATE INDEX "market_sales_card_id_sold_at_idx" ON "market_sales"("card_id", "sold_at");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ebay_sales_item_url_key" ON "ebay_sales"("item_url");
+CREATE UNIQUE INDEX "market_sales_item_url_key" ON "market_sales"("item_url");
 
 -- CreateIndex
 CREATE INDEX "alerts_card_id_created_at_idx" ON "alerts"("card_id", "created_at");
@@ -108,7 +109,7 @@ ALTER TABLE "collection_items" ADD CONSTRAINT "collection_items_card_id_fkey" FO
 ALTER TABLE "price_snapshots" ADD CONSTRAINT "price_snapshots_card_id_fkey" FOREIGN KEY ("card_id") REFERENCES "cards"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "ebay_sales" ADD CONSTRAINT "ebay_sales_card_id_fkey" FOREIGN KEY ("card_id") REFERENCES "cards"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "market_sales" ADD CONSTRAINT "market_sales_card_id_fkey" FOREIGN KEY ("card_id") REFERENCES "cards"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "alerts" ADD CONSTRAINT "alerts_card_id_fkey" FOREIGN KEY ("card_id") REFERENCES "cards"("id") ON DELETE CASCADE ON UPDATE CASCADE;

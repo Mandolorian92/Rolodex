@@ -5,9 +5,10 @@
  *  - Prices API (`/api/product`, `/api/products`) — current market prices for a product,
  *    across whatever condition/grade fields apply to its category. No historical data;
  *    we build our own time series by snapshotting these on a schedule (see `sync.ts`).
- *  - Marketplace API (`/api/offers`, ...) — used here just for `status=collection`, which
- *    returns everything in a PriceCharting user's collection. That lets us import an
- *    existing collection in one call instead of re-adding every card by hand.
+ *  - Marketplace API (`/api/offers`, ...) — `status=collection` returns everything in a
+ *    PriceCharting user's collection (used to import a collection in one call), and
+ *    `status=sold` returns actual sold transactions for a product (used to get real recent
+ *    sale prices, not just the aggregate guide price).
  *
  * Hard limit: 1 request/second, enforced with `throttlePriceCharting` — PriceCharting
  * will revoke API access for accounts that exceed it.
@@ -72,12 +73,14 @@ export interface PriceChartingOffer {
   "offer-id": string;
   "offer-status": string;
   "offer-url"?: string;
-  price?: number; // cents
+  price?: number; // cents — current price, or sale price if the offer has sold
   value?: number; // cents — current value; present for status=collection offers
   quantity?: number;
   "is-available"?: boolean;
   "is-sold"?: boolean;
   "is-ended"?: boolean;
+  "sale-time"?: string; // YYYY-MM-DD, present when is-sold
+  "ended-time"?: string; // YYYY-MM-DD
 }
 
 export interface PriceChartingOffersResult {
@@ -138,6 +141,15 @@ export async function getOffers(params: {
   }
   const data = await pcFetch<PriceChartingOffersResult>("/offers", query);
   return data.offers ?? [];
+}
+
+/**
+ * Recently sold transactions on PriceCharting's own marketplace for a specific product —
+ * real individual sales, not the aggregate guide price. Works with any paid subscription's
+ * API key, no separate signup (unlike eBay's Marketplace Insights API).
+ */
+export async function getSoldOffers(priceChartingId: string): Promise<PriceChartingOffer[]> {
+  return getOffers({ id: priceChartingId, status: "sold" });
 }
 
 /**

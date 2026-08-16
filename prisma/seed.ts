@@ -1,15 +1,25 @@
 /**
  * Demo seed data so the app is browsable without live PriceCharting/eBay API keys.
- * Creates a few cards with synthetic price history (one trending up, one trending down,
- * one that recently peaked and pulled back) and runs the trend engine to generate alerts.
+ * Creates a few cards with synthetic guide-price history (one trending up, one trending
+ * down, one that recently peaked and pulled back) and runs the trend engine to generate
+ * alerts. Two cards also get a synthetic recent sale — modeling the real-world case where
+ * an actual sale beats what PriceCharting's guide price says the card is worth.
  */
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
 import { Condition, PriceSource } from "../src/generated/prisma/client";
 import { evaluateCardTrends } from "../src/lib/trends";
-import { CONDITION_TO_PRICE_TYPE } from "../src/lib/grades";
+import { CONDITION_TO_PRICE_TYPE, parseConditionString } from "../src/lib/grades";
 
 const DAY = 24 * 60 * 60 * 1000;
+
+interface SeedSale {
+  source: typeof PriceSource.PRICECHARTING_SALE | typeof PriceSource.EBAY_SALE;
+  title: string;
+  priceUsd: number;
+  conditionText: string;
+  daysAgo: number;
+}
 
 interface SeedCard {
   priceChartingId: string;
@@ -21,6 +31,8 @@ interface SeedCard {
   purchasePrice: number; // cents
   /** Price (dollars) at each day offset from today, oldest first: [-30d, -14d, -7d, -3d, -1d, today]. */
   priceCurveUsd: number[];
+  /** An actual recent sale, demonstrating real sales beating/lagging the guide price. */
+  recentSale?: SeedSale;
 }
 
 const SEED_CARDS: SeedCard[] = [
@@ -33,6 +45,13 @@ const SEED_CARDS: SeedCard[] = [
     condition: Condition.GRADED_9,
     purchasePrice: 25000,
     priceCurveUsd: [280, 300, 320, 360, 395, 410],
+    recentSale: {
+      source: PriceSource.PRICECHARTING_SALE,
+      title: "Charizard #4 Holo PSA 9 - Base Set",
+      priceUsd: 460,
+      conditionText: "PSA 9",
+      daysAgo: 0,
+    },
   },
   {
     priceChartingId: "demo-blastoise-base-holo",
@@ -63,6 +82,14 @@ const SEED_CARDS: SeedCard[] = [
     condition: Condition.LIGHTLY_PLAYED,
     purchasePrice: 900000,
     priceCurveUsd: [9500, 9600, 9550, 9700, 9650, 9680],
+    // Mirrors a real scenario: the guide price lags what the card actually just sold for.
+    recentSale: {
+      source: PriceSource.EBAY_SALE,
+      title: "Black Lotus Alpha - Lightly Played - MTG",
+      priceUsd: 10900,
+      conditionText: "Lightly Played",
+      daysAgo: 0,
+    },
   },
 ];
 
@@ -101,10 +128,40 @@ async function main() {
       await prisma.priceSnapshot.create({
         data: {
           cardId: card.id,
-          source: PriceSource.MANUAL,
+          source: PriceSource.PRICECHARTING_GUIDE,
           priceType,
           price: Math.round(priceUsd * 100),
           capturedAt: new Date(Date.now() - daysAgo * DAY),
+        },
+      });
+    }
+
+    if (seed.recentSale) {
+      const sale = seed.recentSale;
+      const soldAt = new Date(Date.now() - sale.daysAgo * DAY);
+      const itemUrl = `https://example.com/demo-sale/${seed.priceChartingId}`;
+
+      await prisma.marketSale.upsert({
+        where: { itemUrl },
+        create: {
+          cardId: card.id,
+          source: sale.source,
+          title: sale.title,
+          price: Math.round(sale.priceUsd * 100),
+          itemUrl,
+          condition: sale.conditionText,
+          soldAt,
+        },
+        update: {},
+      });
+
+      await prisma.priceSnapshot.create({
+        data: {
+          cardId: card.id,
+          source: sale.source,
+          priceType: CONDITION_TO_PRICE_TYPE[parseConditionString(sale.conditionText)],
+          price: Math.round(sale.priceUsd * 100),
+          capturedAt: soldAt,
         },
       });
     }

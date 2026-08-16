@@ -6,6 +6,11 @@ import TrendBadge from "@/components/TrendBadge";
 
 export const dynamic = "force-dynamic";
 
+const SALE_SOURCE_LABEL: Record<string, string> = {
+  PRICECHARTING_SALE: "PriceCharting",
+  EBAY_SALE: "eBay",
+};
+
 export default async function CardDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
@@ -13,7 +18,7 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
     where: { id },
     include: {
       priceSnapshots: { orderBy: { capturedAt: "asc" } },
-      ebaySales: { orderBy: { soldAt: "desc" }, take: 10 },
+      marketSales: { orderBy: { soldAt: "desc" }, take: 15 },
       alerts: { orderBy: { createdAt: "desc" }, take: 10 },
       collectionItems: true,
     },
@@ -40,8 +45,45 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
             capturedAt: s.capturedAt.toISOString(),
             price: s.price,
             priceType: s.priceType,
+            source: s.source,
           }))}
         />
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Recent sales</h2>
+        {card.marketSales.length === 0 ? (
+          <p className="text-sm text-zinc-500">
+            No recent sales found yet — run a sync to check PriceCharting&apos;s marketplace, or configure{" "}
+            <code className="text-zinc-400">EBAY_CLIENT_ID</code>/
+            <code className="text-zinc-400">EBAY_CLIENT_SECRET</code> for eBay comps too.
+          </p>
+        ) : (
+          <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+            {card.marketSales.map((sale) => (
+              <li key={sale.id} className="flex items-center justify-between px-4 py-3 text-sm">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="flex-none rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                    {SALE_SOURCE_LABEL[sale.source] ?? sale.source}
+                  </span>
+                  <a
+                    href={sale.itemUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="truncate text-zinc-300 hover:underline"
+                  >
+                    {sale.title}
+                  </a>
+                </div>
+                <div className="flex flex-none items-center gap-4">
+                  {sale.condition && <span className="text-xs text-zinc-600">{sale.condition}</span>}
+                  <span className="text-xs text-zinc-600">{sale.soldAt.toLocaleDateString()}</span>
+                  <span className="font-mono text-zinc-100">{formatCents(sale.price)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section>
@@ -60,33 +102,6 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
                   <span className="text-zinc-300">{alert.message}</span>
                 </div>
                 <span className="text-xs text-zinc-600">{alert.createdAt.toLocaleString()}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-          Recent eBay sold comps
-        </h2>
-        {card.ebaySales.length === 0 ? (
-          <p className="text-sm text-zinc-500">
-            No eBay comps yet — this requires <code className="text-zinc-400">EBAY_CLIENT_ID</code>/
-            <code className="text-zinc-400">EBAY_CLIENT_SECRET</code> to be configured and Marketplace Insights
-            access to be granted on your eBay developer account.
-          </p>
-        ) : (
-          <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
-            {card.ebaySales.map((sale) => (
-              <li key={sale.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                <a href={sale.itemUrl} target="_blank" rel="noreferrer" className="text-zinc-300 hover:underline">
-                  {sale.title}
-                </a>
-                <div className="flex items-center gap-4">
-                  <span className="text-xs text-zinc-600">{sale.soldAt.toLocaleDateString()}</span>
-                  <span className="font-mono text-zinc-100">{formatCents(sale.price)}</span>
-                </div>
               </li>
             ))}
           </ul>

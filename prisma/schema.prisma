@@ -1,5 +1,13 @@
 // Prisma schema for Rolodex — a price-tracking "ticker" for trading card collections.
-// Data sources: PriceCharting (catalog + aggregated market prices) and eBay (recent sold comps).
+//
+// Two kinds of price data feed the ticker, and they're deliberately kept in one merged
+// timeline (PriceSnapshot) rather than treating the guide price as primary and sales as a
+// side note: PriceCharting's per-condition guide price (an aggregate that can lag real
+// demand) and actual recent sold transactions (PriceCharting's own marketplace, and eBay
+// when configured) — see PriceSource. Individual sold comps are also kept in MarketSale
+// with their listing details (title/link/image) for display, but the price itself is
+// mirrored into PriceSnapshot so the trend engine reacts to real sales exactly like it
+// reacts to a guide-price move.
 
 generator client {
   provider = "prisma-client"
@@ -23,7 +31,7 @@ model Card {
 
   collectionItems CollectionItem[]
   priceSnapshots  PriceSnapshot[]
-  ebaySales       EbaySale[]
+  marketSales     MarketSale[]
   alerts          Alert[]
 
   @@map("cards")
@@ -66,8 +74,11 @@ enum Condition {
   SGC_10
 }
 
-// A point-in-time price observation for a card, from a given source/price type.
-// This is the time series that powers the ticker and trend engine.
+// A point-in-time price observation for a card, from a given source/price type. This is
+// the merged time series that powers the ticker and trend engine — both periodic guide
+// price pulls AND individual sold transactions land here, at their real timestamps, so a
+// sale that beats the guide price shows up as a spike/new-high immediately rather than
+// waiting for PriceCharting's aggregate to catch up.
 model PriceSnapshot {
   id         String      @id @default(cuid())
   cardId     String      @map("card_id")
@@ -82,28 +93,34 @@ model PriceSnapshot {
 }
 
 enum PriceSource {
-  PRICECHARTING
-  EBAY
+  /// PriceCharting's aggregate per-condition guide price (/api/product). Can lag real demand.
+  PRICECHARTING_GUIDE
+  /// An actual sold transaction on PriceCharting's own marketplace (/api/offers?status=sold).
+  PRICECHARTING_SALE
+  /// An actual sold transaction on eBay.
+  EBAY_SALE
   MANUAL
 }
 
-// An individual sold listing pulled from eBay, used as raw comps alongside PriceCharting's
-// aggregate prices.
-model EbaySale {
-  id        String   @id @default(cuid())
-  cardId    String   @map("card_id")
-  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+// An individual sold transaction — PriceCharting's own marketplace, or eBay — kept with its
+// full listing details (title/link/image) for display. Its price is also mirrored into
+// PriceSnapshot (see above) so it drives the trend engine like any other price point.
+model MarketSale {
+  id        String      @id @default(cuid())
+  cardId    String      @map("card_id")
+  card      Card        @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  source    PriceSource
   title     String
   price     Int // cents
-  itemUrl   String   @map("item_url")
-  imageUrl  String?  @map("image_url")
+  itemUrl   String      @map("item_url")
+  imageUrl  String?     @map("image_url")
   condition String?
-  soldAt    DateTime @map("sold_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  soldAt    DateTime    @map("sold_at")
+  createdAt DateTime    @default(now()) @map("created_at")
 
   @@unique([itemUrl])
   @@index([cardId, soldAt])
-  @@map("ebay_sales")
+  @@map("market_sales")
 }
 
 // A generated signal — "trending up", "time to sell", etc — surfaced from the trend engine.

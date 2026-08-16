@@ -16,7 +16,7 @@ async function main() {
       console.error(`✗ ${r.cardName}: ${r.error}`);
     } else {
       console.log(
-        `✓ ${r.cardName}: ${r.snapshotsCreated} price(s), ${r.ebaySalesCreated} eBay sale(s), ${r.alerts.length} alert(s)`
+        `✓ ${r.cardName}: ${r.guideSnapshotsCreated} guide price(s), ${r.salesRecorded} real sale(s), ${r.alerts.length} alert(s)`
       );
     }
   }

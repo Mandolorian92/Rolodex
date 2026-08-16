@@ -88,7 +88,7 @@ async function importOffer(offer: PriceChartingOffer, summary: ImportSummary) {
     await prisma.priceSnapshot.create({
       data: {
         cardId: card.id,
-        source: PriceSource.PRICECHARTING,
+        source: PriceSource.PRICECHARTING_GUIDE,
         priceType: CONDITION_TO_PRICE_TYPE[condition],
         price: offer.value,
       },

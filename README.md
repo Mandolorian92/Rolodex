@@ -1,9 +1,12 @@
 # Rolodex
 
-A near-real-time price ticker for trading card collections. Track the cards you own,
-pull their market prices from [PriceCharting](https://www.pricecharting.com/api-documentation)
-(and, optionally, raw sold comps from eBay), and get automatic signals when a card is
-trending up or looks like it's time to sell.
+A near-real-time price ticker for trading card collections. Track the cards you own, and
+get automatic sell/hold signals backed by **real recent sales** — not just
+[PriceCharting](https://www.pricecharting.com/api-documentation)'s aggregate guide price,
+which can lag what a card is actually selling for. PriceCharting's own marketplace sold
+offers and, optionally, eBay sold comps both feed directly into the same price timeline
+the guide price does, so an actual sale that beats the guide shows up as a signal
+immediately instead of waiting for the aggregate number to catch up.
 
 ## Stack
 
@@ -25,20 +28,33 @@ trending up or looks like it's time to sell.
     starting price for each card. Safe to re-run; it syncs quantity/condition from
     PriceCharting rather than duplicating.
   - **Manual add** (`/collection/add`) — search the catalog and add a card by hand.
-- A **sync** (`src/lib/sync.ts`, exposed as `POST /api/sync` and `npm run sync`) refreshes
-  every price PriceCharting reports for each card in your collection (whatever grade/price
-  fields that category returns) as `PriceSnapshot` rows, optionally pulls recent sold comps
-  from eBay's Marketplace Insights API into `EbaySale` rows, then runs the **trend engine**.
+- A **sync** (`src/lib/sync.ts`, exposed as `POST /api/sync` and `npm run sync`) does three
+  things per card, in order:
+  1. Pulls PriceCharting's guide price for every grade/condition field that card's category
+     returns, as `PriceSnapshot` rows (`source: PRICECHARTING_GUIDE`).
+  2. Pulls real recent sold transactions — PriceCharting's own marketplace
+     (`src/lib/marketSales.ts`, works with the same API key, no extra signup) and, if
+     configured, eBay. Each sale is recorded twice: as a `MarketSale` (title/link/image, for
+     display) and mirrored into `PriceSnapshot` (`source: PRICECHARTING_SALE` /
+     `EBAY_SALE`) at its real sale date — so the trend engine sees an actual sale exactly
+     like a guide-price move, not as a separate side channel.
+  3. Runs the **trend engine** against the merged timeline.
+
   All PriceCharting calls go through a shared throttle (`src/lib/rateLimit.ts`) to stay
   under their hard 1 request/second limit — exceeding it risks API access being revoked.
-- The **trend engine** (`src/lib/trends.ts`) looks at each card's price history and fires
-  `Alert` rows for:
+  Note this means two PriceCharting calls per card per sync (guide + sold offers), so a
+  full sync takes roughly 2 seconds/card.
+- The **trend engine** (`src/lib/trends.ts`) looks at each card's merged price+sales history
+  and fires `Alert` rows for:
   - **Trending up / down** — ≥10% move over the trailing 7 days
   - **New high** — the latest price is an all-time high
   - **Sell signal** — either a big 30-day run-up (≥35%) or a pullback of ≥8% from a recent
     30-day peak (momentum stalling after a run)
   - Alerts are deduplicated with a 24h cooldown per (card, price type, alert type) so a
     sustained trend doesn't spam you every sync.
+  - When a signal is driven by an actual sale rather than the guide price, the alert message
+    says so explicitly (e.g. "Ungraded just hit a new high of $10,900.00 — based on a recent
+    eBay sale") — the evidence behind the recommendation, not just a percentage.
 - **Notifications** (`src/lib/notify.ts`): every alert created during a sync run is batched
   into one summary email via [Resend](https://resend.com). Optional — with no email config,
   sync just skips it and alerts still show up on `/alerts`.
@@ -80,9 +96,11 @@ Without `PRICECHARTING_API_KEY` set, the app still runs — collection/alerts pa
 whatever's already in the database (e.g. the seed data), but syncing/importing will fail
 with a clear error instead of crashing.
 
-`EBAY_CLIENT_ID`/`EBAY_CLIENT_SECRET` are optional. Note that eBay's **sold-listing** data
-(what we want for real comps) lives behind the Marketplace Insights API, which eBay only
-grants to approved developer accounts on request — see
+`EBAY_CLIENT_ID`/`EBAY_CLIENT_SECRET` are optional — real sold-comp data already works
+without them, via PriceCharting's own marketplace (`getSoldOffers` in `pricecharting.ts`),
+which uses your existing API key. eBay adds a much larger sales pool on top of that, since
+most card sales happen there, but its **sold-listing** data lives behind the Marketplace
+Insights API, which eBay only grants to approved developer accounts on request — see
 [the eBay docs](https://developer.ebay.com/api-docs/buy/marketplace-insights/overview.html).
 If your keys don't have that access yet, `fetchSoldComps` logs a warning and returns an
 empty list rather than failing the sync.
@@ -119,8 +137,11 @@ plain cron job running `npm run sync` on a server.
 ## Data model
 
 See `prisma/schema.prisma`. Briefly: `Card` (catalog entry) → `CollectionItem` (what you
-own) and `PriceSnapshot` (time series of prices per condition/price type) and `EbaySale`
-(raw sold comps) and `Alert` (generated signals).
+own), `PriceSnapshot` (the merged time series — guide pulls and individual sales alike —
+that the ticker and trend engine read), `MarketSale` (sold-transaction details for display:
+title/link/image/condition), and `Alert` (generated signals). `PriceSnapshot.source` and
+`MarketSale.source` share one `PriceSource` enum (`PRICECHARTING_GUIDE`,
+`PRICECHARTING_SALE`, `EBAY_SALE`, `MANUAL`) so every price point's provenance is explicit.
 
 ### Card grades
 
