@@ -28,6 +28,7 @@ const ALERT_TYPE_LABEL: Record<string, string> = {
   TRENDING_DOWN: "Trending down",
   SELL_SIGNAL: "Sell signal",
   NEW_HIGH: "New high",
+  VARIANT_MISMATCH: "Check variant",
 };
 
 function buildEmail(alerts: AlertWithCard[]): { subject: string; html: string; text: string } {

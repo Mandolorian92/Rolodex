@@ -5,6 +5,7 @@ const STYLES: Record<AlertType, { label: string; className: string }> = {
   [AlertType.TRENDING_DOWN]: { label: "Trending down", className: "bg-rose-500/15 text-rose-400" },
   [AlertType.SELL_SIGNAL]: { label: "Sell signal", className: "bg-amber-500/15 text-amber-400" },
   [AlertType.NEW_HIGH]: { label: "New high", className: "bg-sky-500/15 text-sky-400" },
+  [AlertType.VARIANT_MISMATCH]: { label: "Check variant", className: "bg-violet-500/15 text-violet-400" },
 };
 
 export default function TrendBadge({ type }: { type: AlertType }) {

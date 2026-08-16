@@ -5,7 +5,7 @@ CREATE TYPE "Condition" AS ENUM ('UNGRADED', 'NEAR_MINT', 'LIGHTLY_PLAYED', 'MOD
 CREATE TYPE "PriceSource" AS ENUM ('PRICECHARTING_GUIDE', 'PRICECHARTING_SALE', 'EBAY_SALE', 'MANUAL');
 
 -- CreateEnum
-CREATE TYPE "AlertType" AS ENUM ('TRENDING_UP', 'TRENDING_DOWN', 'SELL_SIGNAL', 'NEW_HIGH');
+CREATE TYPE "AlertType" AS ENUM ('TRENDING_UP', 'TRENDING_DOWN', 'SELL_SIGNAL', 'NEW_HIGH', 'VARIANT_MISMATCH');
 
 -- CreateTable
 CREATE TABLE "cards" (
@@ -15,6 +15,8 @@ CREATE TABLE "cards" (
     "console_name" TEXT,
     "category" TEXT,
     "image_url" TEXT,
+    "variant_label" TEXT,
+    "variant_checked_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Condition } from "@/generated/prisma/client";
 import { syncCard } from "@/lib/sync";
+import { checkForHigherValueVariants } from "@/lib/variants";
 
 export async function GET() {
   const items = await prisma.collectionItem.findMany({
@@ -58,6 +59,12 @@ export async function POST(req: NextRequest) {
     await syncCard(card.id);
   } catch (err) {
     console.warn(`[collection] initial sync failed for card ${card.id}:`, err);
+  }
+
+  try {
+    await checkForHigherValueVariants(card);
+  } catch (err) {
+    console.warn(`[collection] variant check failed for card ${card.id}:`, err);
   }
 
   return NextResponse.json({ item }, { status: 201 });

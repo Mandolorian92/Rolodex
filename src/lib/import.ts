@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { PriceSource } from "@/generated/prisma/client";
 import { getOffers, type PriceChartingOffer } from "@/lib/pricecharting";
 import { parseConditionString, CONDITION_TO_PRICE_TYPE } from "@/lib/grades";
+import { checkForHigherValueVariants } from "@/lib/variants";
 
 export interface ImportSummary {
   offersFound: number;
@@ -94,5 +95,12 @@ async function importOffer(offer: PriceChartingOffer, summary: ImportSummary) {
       },
     });
     summary.priceSnapshotsCreated += 1;
+  }
+
+  try {
+    await checkForHigherValueVariants(card);
+  } catch (err) {
+    // Nice-to-have on top of the import; don't fail the import over it.
+    console.warn(`[import] variant check failed for card ${card.id}:`, err);
   }
 }

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { formatCents } from "@/lib/format";
 import PriceHistoryChart from "@/components/PriceHistoryChart";
 import TrendBadge from "@/components/TrendBadge";
+import CheckVariantsButton from "@/components/CheckVariantsButton";
 
 export const dynamic = "force-dynamic";
 
@@ -30,12 +31,16 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-100">{card.name}</h1>
-        {card.consoleName && <p className="text-sm text-zinc-500">{card.consoleName}</p>}
-        <p className="mt-1 text-xs text-zinc-600">
-          {totalQuantity > 0 ? `You own ${totalQuantity} of these` : "Not currently in your collection"}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-100">{card.name}</h1>
+          {card.consoleName && <p className="text-sm text-zinc-500">{card.consoleName}</p>}
+          <p className="mt-1 text-xs text-zinc-600">
+            {totalQuantity > 0 ? `You own ${totalQuantity} of these` : "Not currently in your collection"}
+            {card.variantLabel && ` · Variant on file: ${card.variantLabel}`}
+          </p>
+        </div>
+        <CheckVariantsButton cardId={card.id} />
       </div>
 
       <section>

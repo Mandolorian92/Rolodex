@@ -20,14 +20,20 @@ datasource db {
 
 // A single card/product as known by PriceCharting's catalog.
 model Card {
-  id              String   @id @default(cuid())
-  priceChartingId String   @unique @map("pricecharting_id")
-  name            String
-  consoleName     String?  @map("console_name") // e.g. "Pokemon Base Set", "Magic: Alpha"
-  category        String? // e.g. "pokemon-card", "sports-card", "magic-card"
-  imageUrl        String?  @map("image_url")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id               String    @id @default(cuid())
+  priceChartingId  String    @unique @map("pricecharting_id")
+  name             String
+  consoleName      String?   @map("console_name") // e.g. "Pokemon Base Set", "Magic: Alpha"
+  category         String? // e.g. "pokemon-card", "sports-card", "magic-card"
+  imageUrl         String?   @map("image_url")
+  // Print variant detected from the product name (e.g. "Holo", "Reverse Holo", "Cosmos
+  // Holo") — see src/lib/variants.ts. Used to find same-card/different-variant siblings
+  // and flag when one is worth meaningfully more, in case a card was mislabeled/scanned
+  // as the wrong print.
+  variantLabel     String?   @map("variant_label")
+  variantCheckedAt DateTime? @map("variant_checked_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   collectionItems CollectionItem[]
   priceSnapshots  PriceSnapshot[]
@@ -148,4 +154,7 @@ enum AlertType {
   TRENDING_DOWN
   SELL_SIGNAL
   NEW_HIGH
+  /// A same-card different-print-variant sibling (e.g. Cosmos Holo vs Holo) is priced
+  /// meaningfully higher than what's on file — possible mislabeled/misidentified variant.
+  VARIANT_MISMATCH
 }

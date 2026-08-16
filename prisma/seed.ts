@@ -7,9 +7,10 @@
  */
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
-import { Condition, PriceSource } from "../src/generated/prisma/client";
+import { AlertType, Condition, PriceSource } from "../src/generated/prisma/client";
 import { evaluateCardTrends } from "../src/lib/trends";
 import { CONDITION_TO_PRICE_TYPE, parseConditionString } from "../src/lib/grades";
+import { formatCents, formatPct } from "../src/lib/format";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -19,6 +20,12 @@ interface SeedSale {
   priceUsd: number;
   conditionText: string;
   daysAgo: number;
+}
+
+interface SeedVariantMismatch {
+  /** Another same-card print PriceCharting sells for more than what's on file. */
+  siblingName: string;
+  siblingPriceUsd: number;
 }
 
 interface SeedCard {
@@ -33,6 +40,8 @@ interface SeedCard {
   priceCurveUsd: number[];
   /** An actual recent sale, demonstrating real sales beating/lagging the guide price. */
   recentSale?: SeedSale;
+  /** A pricier same-card different-print sibling, demonstrating the variant-mismatch flag. */
+  variantMismatch?: SeedVariantMismatch;
 }
 
 const SEED_CARDS: SeedCard[] = [
@@ -51,6 +60,22 @@ const SEED_CARDS: SeedCard[] = [
       priceUsd: 460,
       conditionText: "PSA 9",
       daysAgo: 0,
+    },
+  },
+  {
+    priceChartingId: "demo-vaporeon-22-holo",
+    name: "Vaporeon #22 Holo",
+    consoleName: "Pokemon Shining Fates",
+    category: "pokemon-card",
+    quantity: 1,
+    condition: Condition.NEAR_MINT,
+    purchasePrice: 800,
+    priceCurveUsd: [9.5, 9.8, 10.2, 10.5, 10.8, 11],
+    // Mirrors the real scenario: the same card number exists as a pricier print variant,
+    // worth a double-check in case the wrong one was scanned in.
+    variantMismatch: {
+      siblingName: "Vaporeon #22 Cosmos Holo",
+      siblingPriceUsd: 34.99,
     },
   },
   {
@@ -164,6 +189,39 @@ async function main() {
           capturedAt: soldAt,
         },
       });
+    }
+
+    if (seed.variantMismatch) {
+      const vm = seed.variantMismatch;
+      const { extractVariant } = await import("../src/lib/variants");
+      const { variant } = extractVariant(seed.name);
+
+      await prisma.card.update({
+        where: { id: card.id },
+        data: { variantLabel: variant, variantCheckedAt: new Date() },
+      });
+
+      const ownedSnapshot = await prisma.priceSnapshot.findFirst({
+        where: { cardId: card.id, source: PriceSource.PRICECHARTING_GUIDE },
+        orderBy: { capturedAt: "desc" },
+      });
+
+      if (ownedSnapshot) {
+        const siblingPrice = Math.round(vm.siblingPriceUsd * 100);
+        const deltaPct = (siblingPrice - ownedSnapshot.price) / ownedSnapshot.price;
+        await prisma.alert.create({
+          data: {
+            cardId: card.id,
+            type: AlertType.VARIANT_MISMATCH,
+            priceType: ownedSnapshot.priceType,
+            message: `Double check the variant — "${vm.siblingName}" (same card, different print) is worth ${formatCents(siblingPrice)}, ${formatPct(deltaPct)} more than what's on file. You may have scanned or labeled the wrong variant.`,
+            changePct: deltaPct,
+            fromPrice: ownedSnapshot.price,
+            toPrice: siblingPrice,
+            windowDays: 0,
+          },
+        });
+      }
     }
 
     const alerts = await evaluateCardTrends(card.id);

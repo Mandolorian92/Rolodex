@@ -58,6 +58,22 @@ immediately instead of waiting for the aggregate number to catch up.
 - **Notifications** (`src/lib/notify.ts`): every alert created during a sync run is batched
   into one summary email via [Resend](https://resend.com). Optional — with no email config,
   sync just skips it and alerts still show up on `/alerts`.
+- **Variant mismatch flagging** (`src/lib/variants.ts`): the same card number often exists
+  as several print variants — Holo, Reverse Holo, Cosmos Holo, 1st Edition, etc — with real
+  price differences between them. PriceCharting's collection scan is trusted as the source
+  of truth for what a card is (its `product-name`/console are re-synced from PriceCharting
+  on every import, not just set once), but scans can still be mislabeled. So whenever a card
+  is first imported or added, the app searches PriceCharting's catalog for same-card
+  different-variant siblings (matching on card identity with variant wording stripped out —
+  "Vaporeon #22" out of both "Vaporeon #22 Holo" and "Vaporeon #22 Cosmos Holo") and flags
+  it (`VARIANT_MISMATCH` alert, "Check variant" badge) if one is priced ≥10% more than
+  what's on file — worth a manual double-check rather than an assumption either way. Also
+  triggerable on demand from the "Check for higher-value variants" button on a card's page.
+
+  Two things worth knowing: the variant-token list (`VARIANT_TOKENS`) is necessarily
+  incomplete — it covers common Pokemon-style print variants, extend it for other games/
+  variants as you hit them — and the comparison is guide-price-to-guide-price, since we
+  don't track sale history for cards outside the collection.
 - The **dashboard** (`/`) is the ticker: portfolio value, average 7-day change, and a table
   per card with its latest price, 7-day change, sparkline, and any active signals.
 - **Portfolio** (`/portfolio`, `src/lib/portfolio.ts`) is the investment-tracking view: cost
@@ -162,6 +178,14 @@ context. The mapping (see `src/lib/pricecharting.ts` and `src/lib/grades.ts`):
 
 Below grade 10, PriceCharting only publishes one aggregate price per tier regardless of
 grading company; at 10 it splits by grader. Our `Condition` enum mirrors that.
+
+## Known limitations
+
+- **Re-importing a card whose condition changed on PriceCharting** (e.g. you re-graded it)
+  creates a new `CollectionItem` row for the new condition rather than replacing the old
+  one, since matching is keyed on `(card, condition)`. The old row is left stale rather than
+  removed. Reconciling this properly would mean tracking PriceCharting's own offer id per
+  item — not done yet.
 
 ## Not yet built
 
