@@ -5,7 +5,7 @@ import { syncCollection } from "@/lib/sync";
 // prices for every card currently in the collection and re-run the trend/alert engine.
 export async function POST() {
   const results = await syncCollection();
-  const totalAlerts = results.reduce((sum, r) => sum + r.alertsCreated, 0);
+  const totalAlerts = results.reduce((sum, r) => sum + r.alerts.length, 0);
   const totalSnapshots = results.reduce((sum, r) => sum + r.snapshotsCreated, 0);
   const errors = results.filter((r) => r.error);
 
@@ -14,6 +14,13 @@ export async function POST() {
     snapshotsCreated: totalSnapshots,
     alertsCreated: totalAlerts,
     errors: errors.map((e) => ({ cardId: e.cardId, cardName: e.cardName, error: e.error })),
-    results,
+    results: results.map((r) => ({
+      cardId: r.cardId,
+      cardName: r.cardName,
+      snapshotsCreated: r.snapshotsCreated,
+      ebaySalesCreated: r.ebaySalesCreated,
+      alertsCreated: r.alerts.length,
+      error: r.error,
+    })),
   });
 }

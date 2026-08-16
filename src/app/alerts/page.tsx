@@ -2,6 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import TrendBadge from "@/components/TrendBadge";
 import AcknowledgeAlertButton from "@/components/AcknowledgeAlertButton";
+import NotifyStatus from "@/components/NotifyStatus";
+import { isNotifyConfigured } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,8 @@ export default async function AlertsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-semibold text-zinc-100">Alerts</h1>
+
+      <NotifyStatus configured={isNotifyConfigured()} />
 
       {alerts.length === 0 ? (
         <p className="text-sm text-zinc-500">

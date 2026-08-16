@@ -39,6 +39,9 @@ trending up or looks like it's time to sell.
     30-day peak (momentum stalling after a run)
   - Alerts are deduplicated with a 24h cooldown per (card, price type, alert type) so a
     sustained trend doesn't spam you every sync.
+- **Notifications** (`src/lib/notify.ts`): every alert created during a sync run is batched
+  into one summary email via [Resend](https://resend.com). Optional — with no email config,
+  sync just skips it and alerts still show up on `/alerts`.
 - The **dashboard** (`/`) is the ticker: portfolio value, average 7-day change, and a table
   per card with its latest price, 7-day change, sparkline, and any active signals.
 
@@ -62,6 +65,10 @@ Open http://localhost:3000.
 | `PRICECHARTING_API_KEY` | yes, for real data | Your 40-character token — Subscription page → "API/Download". Requires a paid PriceCharting subscription. |
 | `PRICECHARTING_SELLER_ID` | no | Your PriceCharting user id, for the collection importer — the part of `pricecharting.com/offers?...&seller=THIS_PART&status=collection` after `seller=`. Can also be entered directly in the import form instead. |
 | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` | no | eBay developer app credentials, for pulling sold comps |
+| `RESEND_API_KEY` | no | Enables email notifications — [get a free key](https://resend.com) |
+| `ALERT_EMAIL_TO` | no | Where alert emails get sent. Required (along with `RESEND_API_KEY`) to turn notifications on |
+| `ALERT_EMAIL_FROM` | no | Sender address. Defaults to Resend's shared test sender, which works without verifying your own domain |
+| `APP_BASE_URL` | no | Used to build links back to the app inside notification emails. Defaults to `http://localhost:3000` |
 
 Without `PRICECHARTING_API_KEY` set, the app still runs — collection/alerts pages work off
 whatever's already in the database (e.g. the seed data), but syncing/importing will fail
@@ -73,6 +80,18 @@ grants to approved developer accounts on request — see
 [the eBay docs](https://developer.ebay.com/api-docs/buy/marketplace-insights/overview.html).
 If your keys don't have that access yet, `fetchSoldComps` logs a warning and returns an
 empty list rather than failing the sync.
+
+### Notifications
+
+Set `RESEND_API_KEY` and `ALERT_EMAIL_TO` to get an email whenever a sync run produces new
+alerts — one email per sync summarizing everything that fired, not one per alert. The
+`/alerts` page shows whether notifications are configured and has a "Send test email"
+button to confirm the setup works before waiting on a real signal.
+
+[Resend](https://resend.com)'s free tier doesn't require verifying your own sending domain
+to get started — the default `onboarding@resend.dev` sender works, though it can only send
+to the email address on your Resend account until you verify a domain. Swap in your own
+domain via `ALERT_EMAIL_FROM` once you have one set up.
 
 ### Keeping prices fresh
 
@@ -119,8 +138,8 @@ grading company; at 10 it splits by grader. Our `Condition` enum mirrors that.
 
 ## Not yet built
 
-- Notifications (email/push) when a new alert fires — alerts currently only surface in-app
-  on the dashboard/alerts page
+- Push/SMS notifications — email is wired up (see above), push would need a service worker
+  + subscription storage since there's no user accounts to hang a device token off of
 - Scheduled syncing (see above — you need to wire up your own cron)
 - Multi-user support / auth
 - CSV bulk price download (Legendary-tier PriceCharting subscribers can download the full

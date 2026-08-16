@@ -3,13 +3,14 @@ import { PriceSource } from "@/generated/prisma/client";
 import { getProduct, extractPriceFields } from "@/lib/pricecharting";
 import { fetchSoldComps, isEbayConfigured } from "@/lib/ebay";
 import { evaluateCardTrends } from "@/lib/trends";
+import { notifyNewAlerts, type AlertWithCard } from "@/lib/notify";
 
 export interface CardSyncResult {
   cardId: string;
   cardName: string;
   snapshotsCreated: number;
   ebaySalesCreated: number;
-  alertsCreated: number;
+  alerts: AlertWithCard[];
   error?: string;
 }
 
@@ -21,7 +22,7 @@ export async function syncCard(cardId: string): Promise<CardSyncResult> {
     cardName: card.name,
     snapshotsCreated: 0,
     ebaySalesCreated: 0,
-    alertsCreated: 0,
+    alerts: [],
   };
 
   try {
@@ -67,12 +68,16 @@ export async function syncCard(cardId: string): Promise<CardSyncResult> {
   }
 
   const alerts = await evaluateCardTrends(card.id);
-  result.alertsCreated = alerts.length;
+  result.alerts = alerts.map((alert) => ({ ...alert, card }));
 
   return result;
 }
 
-/** Refresh prices for every distinct card currently in the collection. */
+/**
+ * Refresh prices for every distinct card currently in the collection, then send one
+ * summary email for everything that fired across the whole run (rather than one email
+ * per card) if notifications are configured.
+ */
 export async function syncCollection(): Promise<CardSyncResult[]> {
   const items = await prisma.collectionItem.findMany({
     select: { cardId: true },
@@ -84,5 +89,13 @@ export async function syncCollection(): Promise<CardSyncResult[]> {
     // Sequential on purpose: stay well under PriceCharting/eBay rate limits.
     results.push(await syncCard(cardId));
   }
+
+  const allAlerts = results.flatMap((r) => r.alerts);
+  try {
+    await notifyNewAlerts(allAlerts);
+  } catch (err) {
+    console.error("[sync] Failed to send alert notification email:", err);
+  }
+
   return results;
 }

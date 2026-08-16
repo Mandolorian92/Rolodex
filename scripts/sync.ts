@@ -16,12 +16,12 @@ async function main() {
       console.error(`✗ ${r.cardName}: ${r.error}`);
     } else {
       console.log(
-        `✓ ${r.cardName}: ${r.snapshotsCreated} price(s), ${r.ebaySalesCreated} eBay sale(s), ${r.alertsCreated} alert(s)`
+        `✓ ${r.cardName}: ${r.snapshotsCreated} price(s), ${r.ebaySalesCreated} eBay sale(s), ${r.alerts.length} alert(s)`
       );
     }
   }
 
-  const totalAlerts = results.reduce((sum, r) => sum + r.alertsCreated, 0);
+  const totalAlerts = results.reduce((sum, r) => sum + r.alerts.length, 0);
   console.log(`\nDone. ${results.length} card(s) synced, ${totalAlerts} new alert(s).`);
 }
 
