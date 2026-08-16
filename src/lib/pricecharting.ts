@@ -65,7 +65,9 @@ export interface PriceChartingSearchResult {
 }
 
 export interface PriceChartingOffer {
-  id: string;
+  // The Marketplace API returns this as a JSON number (unlike /api/product and
+  // /api/products, which return it as a string) — callers should coerce with String(id).
+  id: string | number;
   "product-name": string;
   "console-name"?: string;
   "condition-string"?: string;

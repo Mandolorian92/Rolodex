@@ -47,7 +47,7 @@ export async function importPriceChartingCollection(sellerId?: string): Promise<
       await importOffer(offer, summary);
     } catch (err) {
       summary.skipped.push({
-        offer: offer["product-name"] ?? offer.id,
+        offer: offer["product-name"] ?? String(offer.id),
         reason: err instanceof Error ? err.message : String(err),
       });
     }
@@ -62,13 +62,18 @@ async function importOffer(offer: PriceChartingOffer, summary: ImportSummary) {
     return;
   }
 
+  // The Marketplace API (/api/offers) returns `id` as a JSON number, unlike the Prices API
+  // (/api/product, /api/products) which returns it as a string — coerce so it matches
+  // Card.priceChartingId's string type either way.
+  const priceChartingId = String(offer.id);
+
   const condition = parseConditionString(offer["condition-string"]);
   const quantity = offer.quantity && offer.quantity > 0 ? offer.quantity : 1;
 
   const card = await prisma.card.upsert({
-    where: { priceChartingId: offer.id },
+    where: { priceChartingId },
     create: {
-      priceChartingId: offer.id,
+      priceChartingId,
       name: offer["product-name"],
       consoleName: offer["console-name"] ?? null,
     },
