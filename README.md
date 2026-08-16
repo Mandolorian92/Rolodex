@@ -44,6 +44,12 @@ trending up or looks like it's time to sell.
   sync just skips it and alerts still show up on `/alerts`.
 - The **dashboard** (`/`) is the ticker: portfolio value, average 7-day change, and a table
   per card with its latest price, 7-day change, sparkline, and any active signals.
+- **Portfolio** (`/portfolio`, `src/lib/portfolio.ts`) is the investment-tracking view: cost
+  basis vs. current value, unrealized gain $/%, a best-to-worst performer ranking, and a
+  portfolio-value-over-time chart. The history chart reconstructs total value on every day
+  any card got a fresh price, carrying forward each card's last known price on days it
+  didn't — a simplification, since quantity-owned history isn't tracked, only current
+  holdings applied backward.
 
 ## Getting started
 
