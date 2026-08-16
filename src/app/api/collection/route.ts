@@ -3,7 +3,6 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Condition } from "@/generated/prisma/client";
 import { syncCard } from "@/lib/sync";
-import { checkForHigherValueVariants } from "@/lib/variants";
 
 export async function GET() {
   const items = await prisma.collectionItem.findMany({
@@ -53,18 +52,13 @@ export async function POST(req: NextRequest) {
     include: { card: true },
   });
 
-  // Best-effort initial price pull so the card shows real data immediately, without
-  // blocking the add flow if PriceCharting/eBay aren't configured or are unreachable.
+  // Best-effort initial price pull (and, since this card is new, a variant-mismatch check —
+  // see shouldRecheckVariant() in variants.ts) so the card shows real data immediately,
+  // without blocking the add flow if PriceCharting/eBay aren't configured or are unreachable.
   try {
     await syncCard(card.id);
   } catch (err) {
     console.warn(`[collection] initial sync failed for card ${card.id}:`, err);
-  }
-
-  try {
-    await checkForHigherValueVariants(card);
-  } catch (err) {
-    console.warn(`[collection] variant check failed for card ${card.id}:`, err);
   }
 
   return NextResponse.json({ item }, { status: 201 });

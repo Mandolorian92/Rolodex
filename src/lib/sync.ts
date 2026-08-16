@@ -4,6 +4,7 @@ import { getProduct, extractPriceFields } from "@/lib/pricecharting";
 import { syncPriceChartingSoldOffers, syncEbaySoldComps } from "@/lib/marketSales";
 import { evaluateCardTrends } from "@/lib/trends";
 import { notifyNewAlerts, type AlertWithCard } from "@/lib/notify";
+import { checkForHigherValueVariants, shouldRecheckVariant } from "@/lib/variants";
 
 export interface CardSyncResult {
   cardId: string;
@@ -60,6 +61,19 @@ export async function syncCard(cardId: string): Promise<CardSyncResult> {
 
   const alerts = await evaluateCardTrends(card.id);
   result.alerts = alerts.map((alert) => ({ ...alert, card }));
+
+  // Variant-mismatch checking costs several extra rate-limited PriceCharting calls, so it
+  // only runs here (never during bulk import) and only when this card hasn't been checked
+  // recently — see shouldRecheckVariant(). A fresh check always runs via the manual
+  // "Check for higher-value variants" button instead.
+  if (shouldRecheckVariant(card)) {
+    try {
+      const { alert: variantAlert } = await checkForHigherValueVariants(card);
+      if (variantAlert) result.alerts.push({ ...variantAlert, card });
+    } catch (err) {
+      console.warn(`[sync] variant check failed for card ${card.id}:`, err);
+    }
+  }
 
   return result;
 }

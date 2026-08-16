@@ -6,8 +6,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const card = await prisma.card.findUniqueOrThrow({ where: { id } });
-    const matches = await checkForHigherValueVariants(card);
-    return NextResponse.json({ matches });
+    const { higherValueVariants } = await checkForHigherValueVariants(card);
+    return NextResponse.json({ matches: higherValueVariants });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Variant check failed" },
