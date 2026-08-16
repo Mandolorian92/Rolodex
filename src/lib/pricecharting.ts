@@ -140,12 +140,24 @@ export interface GetOffersParams {
 }
 
 export async function getOffers(params: GetOffersParams): Promise<PriceChartingOffer[]> {
+  const data = await getOffersRaw(params);
+  return data.offers ?? [];
+}
+
+/**
+ * Same call as getOffers, but returns the complete, untouched response object instead of
+ * just the `offers` array — useful for checking whether a given response carries any
+ * pagination metadata (cursor, next-page token, total count, etc) that getOffers would
+ * otherwise silently discard. The docs don't mention one for this endpoint.
+ */
+export async function getOffersRaw(
+  params: GetOffersParams
+): Promise<PriceChartingOffersResult & Record<string, unknown>> {
   const query: Record<string, string> = { status: params.status };
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && key !== "status") query[key] = String(value);
   }
-  const data = await pcFetch<PriceChartingOffersResult>("/offers", query);
-  return data.offers ?? [];
+  return pcFetch<PriceChartingOffersResult & Record<string, unknown>>("/offers", query);
 }
 
 /** Safety cap on how many pages getAllOffers will follow, regardless of what the API returns. */
