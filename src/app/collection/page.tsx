@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { pickPrimarySeries } from "@/lib/cardStats";
 import { formatCents, formatPriceType } from "@/lib/format";
 import CollectionRowActions from "@/components/CollectionRowActions";
+import ImportCollectionForm from "@/components/ImportCollectionForm";
 
 export const dynamic = "force-dynamic";
 
@@ -18,13 +19,17 @@ export default async function CollectionPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-zinc-100">Your collection</h1>
-        <Link
-          href="/collection/add"
-          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
-        >
-          + Add card
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/collection/add"
+            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+          >
+            + Add card
+          </Link>
+        </div>
       </div>
+
+      <ImportCollectionForm />
 
       {items.length === 0 ? (
         <p className="text-sm text-zinc-500">Nothing here yet. Add a card to get started.</p>
@@ -42,7 +47,7 @@ export default async function CollectionPage() {
             </thead>
             <tbody className="divide-y divide-zinc-800">
               {items.map((item) => {
-                const primary = pickPrimarySeries(item.card.priceSnapshots);
+                const primary = pickPrimarySeries(item.card.priceSnapshots, item.condition);
                 return (
                   <tr key={item.id} className="hover:bg-zinc-900/60">
                     <td className="px-4 py-3">

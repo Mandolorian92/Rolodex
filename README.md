@@ -16,12 +16,21 @@ trending up or looks like it's time to sell.
 
 - **Cards** are pulled from the PriceCharting catalog (`src/lib/pricecharting.ts`) and
   cached locally as `Card` rows, keyed by PriceCharting's product id.
-- **CollectionItem** rows track what you actually own — quantity, condition, cost basis.
+- **CollectionItem** rows track what you actually own — quantity, condition (mapped to the
+  matching PriceCharting price field via `src/lib/grades.ts`), cost basis.
+- You can populate your collection two ways:
+  - **Import** (`src/lib/import.ts`, `POST /api/collection/import`, the "Import from
+    PriceCharting" button on `/collection`) — pulls your existing PriceCharting collection
+    in one call via the Marketplace API (`/api/offers?status=collection`), including a
+    starting price for each card. Safe to re-run; it syncs quantity/condition from
+    PriceCharting rather than duplicating.
+  - **Manual add** (`/collection/add`) — search the catalog and add a card by hand.
 - A **sync** (`src/lib/sync.ts`, exposed as `POST /api/sync` and `npm run sync`) refreshes
-  every price PriceCharting reports for each card in your collection (loose/graded/etc,
-  whatever fields that category returns) as `PriceSnapshot` rows, optionally pulls recent
-  sold comps from eBay's Marketplace Insights API into `EbaySale` rows, then runs the
-  **trend engine**.
+  every price PriceCharting reports for each card in your collection (whatever grade/price
+  fields that category returns) as `PriceSnapshot` rows, optionally pulls recent sold comps
+  from eBay's Marketplace Insights API into `EbaySale` rows, then runs the **trend engine**.
+  All PriceCharting calls go through a shared throttle (`src/lib/rateLimit.ts`) to stay
+  under their hard 1 request/second limit — exceeding it risks API access being revoked.
 - The **trend engine** (`src/lib/trends.ts`) looks at each card's price history and fires
   `Alert` rows for:
   - **Trending up / down** — ≥10% move over the trailing 7 days
@@ -50,12 +59,13 @@ Open http://localhost:3000.
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | yes | Postgres connection string |
-| `PRICECHARTING_API_KEY` | yes, for real data | Primary price source — [get a key here](https://www.pricecharting.com/api-documentation) |
+| `PRICECHARTING_API_KEY` | yes, for real data | Your 40-character token — Subscription page → "API/Download". Requires a paid PriceCharting subscription. |
+| `PRICECHARTING_SELLER_ID` | no | Your PriceCharting user id, for the collection importer — the part of `pricecharting.com/offers?...&seller=THIS_PART&status=collection` after `seller=`. Can also be entered directly in the import form instead. |
 | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` | no | eBay developer app credentials, for pulling sold comps |
 
 Without `PRICECHARTING_API_KEY` set, the app still runs — collection/alerts pages work off
-whatever's already in the database (e.g. the seed data), but syncing new prices will fail
-per-card with a clear error instead of crashing.
+whatever's already in the database (e.g. the seed data), but syncing/importing will fail
+with a clear error instead of crashing.
 
 `EBAY_CLIENT_ID`/`EBAY_CLIENT_SECRET` are optional. Note that eBay's **sold-listing** data
 (what we want for real comps) lives behind the Marketplace Insights API, which eBay only
@@ -87,9 +97,33 @@ See `prisma/schema.prisma`. Briefly: `Card` (catalog entry) → `CollectionItem`
 own) and `PriceSnapshot` (time series of prices per condition/price type) and `EbaySale`
 (raw sold comps) and `Alert` (generated signals).
 
+### Card grades
+
+PriceCharting reuses its video-game column names for card grades, which reads oddly out of
+context. The mapping (see `src/lib/pricecharting.ts` and `src/lib/grades.ts`):
+
+| PriceCharting field | Meaning for cards |
+| --- | --- |
+| `loose-price` | Ungraded |
+| `cib-price` | Grade 7 |
+| `new-price` | Grade 8 |
+| `graded-price` | Grade 9 |
+| `box-only-price` | Grade 9.5 |
+| `manual-only-price` | PSA 10 |
+| `bgs-10-price` | BGS 10 |
+| `condition-17-price` | CGC 10 |
+| `condition-18-price` | SGC 10 |
+
+Below grade 10, PriceCharting only publishes one aggregate price per tier regardless of
+grading company; at 10 it splits by grader. Our `Condition` enum mirrors that.
+
 ## Not yet built
 
 - Notifications (email/push) when a new alert fires — alerts currently only surface in-app
   on the dashboard/alerts page
 - Scheduled syncing (see above — you need to wire up your own cron)
 - Multi-user support / auth
+- CSV bulk price download (Legendary-tier PriceCharting subscribers can download the full
+  price guide as CSV once/day instead of per-product API calls — not wired up yet, but
+  would be a good fit for keeping a large collection's prices fresh without burning the
+  1 req/sec API limit)

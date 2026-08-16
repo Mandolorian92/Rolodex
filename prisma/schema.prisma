@@ -46,6 +46,10 @@ model CollectionItem {
   @@map("collection_items")
 }
 
+// Grading tiers match PriceCharting's own price fields for cards: below grade 10 they
+// only publish one aggregate price per tier regardless of grading company, but at 10 they
+// split by grader (PSA/BGS/CGC/SGC each get their own price field) — see
+// CARD_PRICE_TYPE_LABELS in src/lib/pricecharting.ts and the mapping in src/lib/grades.ts.
 enum Condition {
   UNGRADED
   NEAR_MINT
@@ -53,10 +57,13 @@ enum Condition {
   MODERATELY_PLAYED
   HEAVILY_PLAYED
   DAMAGED
-  GRADED_10
-  GRADED_9
-  GRADED_8
   GRADED_7
+  GRADED_8
+  GRADED_9
+  PSA_10
+  BGS_10
+  CGC_10
+  SGC_10
 }
 
 // A point-in-time price observation for a card, from a given source/price type.

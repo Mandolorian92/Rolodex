@@ -22,7 +22,7 @@ export default async function DashboardPage() {
 
   const rows = items.map((item) => ({
     item,
-    primary: pickPrimarySeries(item.card.priceSnapshots),
+    primary: pickPrimarySeries(item.card.priceSnapshots, item.condition),
   }));
 
   const totalValue = rows.reduce((sum, { item, primary }) => {

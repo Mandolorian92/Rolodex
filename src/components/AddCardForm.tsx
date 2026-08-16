@@ -18,10 +18,13 @@ const CONDITIONS = [
   "MODERATELY_PLAYED",
   "HEAVILY_PLAYED",
   "DAMAGED",
-  "GRADED_10",
-  "GRADED_9",
-  "GRADED_8",
   "GRADED_7",
+  "GRADED_8",
+  "GRADED_9",
+  "PSA_10",
+  "BGS_10",
+  "CGC_10",
+  "SGC_10",
 ] as const;
 
 export default function AddCardForm() {

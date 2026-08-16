@@ -7,6 +7,7 @@ import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
 import { Condition, PriceSource } from "../src/generated/prisma/client";
 import { evaluateCardTrends } from "../src/lib/trends";
+import { CONDITION_TO_PRICE_TYPE } from "../src/lib/grades";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -92,7 +93,7 @@ async function main() {
       update: {},
     });
 
-    const priceType = seed.condition === Condition.GRADED_9 || seed.condition === Condition.GRADED_8 ? "graded" : "ungraded";
+    const priceType = CONDITION_TO_PRICE_TYPE[seed.condition];
 
     for (let i = 0; i < OFFSETS_DAYS.length; i++) {
       const daysAgo = OFFSETS_DAYS[i];
