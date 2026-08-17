@@ -12,6 +12,13 @@ const BIG_RUN_THRESHOLD = 0.35;
 const PEAK_LOOKBACK_DAYS = 30;
 /** Don't fire the same (card, priceType, alert type) more than once per cooldown window. */
 const ALERT_COOLDOWN_HOURS = 24;
+/**
+ * Skip price-trend alerts entirely for a series currently worth less than this — a 140%
+ * move on a card worth $1.60 isn't actionable. Percentage thresholds alone don't catch this
+ * since cheap cards swing wildly in percentage terms on tiny dollar moves. Configurable via
+ * ALERT_MIN_VALUE_USD since "worth bothering about" is a personal call.
+ */
+const MIN_ALERT_VALUE_CENTS = Math.round(Number(process.env.ALERT_MIN_VALUE_USD ?? "5") * 100);
 
 export interface ChangeStats {
   latest: PriceSnapshot;
@@ -114,6 +121,7 @@ export async function evaluateCardTrends(cardId: string) {
   for (const [priceType, series] of byPriceType) {
     const stats = computeChangeStats(series);
     if (!stats) continue;
+    if (stats.latest.price < MIN_ALERT_VALUE_CENTS) continue;
 
     const candidates: Array<{
       type: AlertType;

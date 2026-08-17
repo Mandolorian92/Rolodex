@@ -5,6 +5,7 @@ import { syncPriceChartingSoldOffers, syncEbaySoldComps } from "@/lib/marketSale
 import { evaluateCardTrends } from "@/lib/trends";
 import { notifyNewAlerts, type AlertWithCard } from "@/lib/notify";
 import { checkForHigherValueVariants, shouldRecheckVariant } from "@/lib/variants";
+import { evaluateGradingOpportunity } from "@/lib/gradingRecs";
 
 export interface CardSyncResult {
   cardId: string;
@@ -73,6 +74,17 @@ export async function syncCard(cardId: string): Promise<CardSyncResult> {
     } catch (err) {
       console.warn(`[sync] variant check failed for card ${card.id}:`, err);
     }
+  }
+
+  // Pure local computation (no API calls) — safe to run every sync, unlike variant checks.
+  try {
+    const collectionItems = await prisma.collectionItem.findMany({ where: { cardId: card.id } });
+    for (const item of collectionItems) {
+      const gradingAlert = await evaluateGradingOpportunity(card.id, item.condition);
+      if (gradingAlert) result.alerts.push({ ...gradingAlert, card });
+    }
+  } catch (err) {
+    console.warn(`[sync] grading recommendation check failed for card ${card.id}:`, err);
   }
 
   return result;

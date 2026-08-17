@@ -157,4 +157,7 @@ enum AlertType {
   /// A same-card different-print-variant sibling (e.g. Cosmos Holo vs Holo) is priced
   /// meaningfully higher than what's on file — possible mislabeled/misidentified variant.
   VARIANT_MISMATCH
+  /// A raw/ungraded card's graded value clears the grading-cost floor with a holding or
+  /// rising trend — see src/lib/gradingRecs.ts.
+  GRADING_OPPORTUNITY
 }

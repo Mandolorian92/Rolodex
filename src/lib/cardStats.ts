@@ -63,3 +63,27 @@ export function pickPrimarySeries(
   if (!stats) return null;
   return { priceType: chosenType, stats };
 }
+
+/** Order low-grade to high-grade, for displaying a card's full price ladder. */
+export const PRICE_TYPE_LADDER = [
+  "loose",
+  "cib",
+  "new",
+  "graded",
+  "box-only",
+  "manual-only",
+  "bgs-10",
+  "condition-17",
+  "condition-18",
+];
+
+/** Latest snapshot per priceType present for a card, ordered per PRICE_TYPE_LADDER. */
+export function latestPriceByType(snapshots: PriceSnapshot[]): Array<{ priceType: string; snapshot: PriceSnapshot }> {
+  const byType = groupByPriceType(snapshots);
+  const known = PRICE_TYPE_LADDER.filter((t) => byType.has(t));
+  const unknown = [...byType.keys()].filter((t) => !PRICE_TYPE_LADDER.includes(t));
+  return [...known, ...unknown].map((priceType) => {
+    const series = byType.get(priceType)!;
+    return { priceType, snapshot: series[series.length - 1] };
+  });
+}

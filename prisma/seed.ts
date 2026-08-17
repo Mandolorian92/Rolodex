@@ -9,6 +9,7 @@ import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
 import { AlertType, Condition, PriceSource } from "../src/generated/prisma/client";
 import { evaluateCardTrends } from "../src/lib/trends";
+import { evaluateGradingOpportunity } from "../src/lib/gradingRecs";
 import { CONDITION_TO_PRICE_TYPE, parseConditionString } from "../src/lib/grades";
 import { formatCents, formatPct } from "../src/lib/format";
 
@@ -42,6 +43,8 @@ interface SeedCard {
   recentSale?: SeedSale;
   /** A pricier same-card different-print sibling, demonstrating the variant-mismatch flag. */
   variantMismatch?: SeedVariantMismatch;
+  /** A parallel "graded" (Grade 9) price curve, demonstrating the grading recommendation. */
+  gradedPriceCurveUsd?: number[];
 }
 
 const SEED_CARDS: SeedCard[] = [
@@ -77,6 +80,19 @@ const SEED_CARDS: SeedCard[] = [
       siblingName: "Vaporeon #22 Cosmos Holo",
       siblingPriceUsd: 34.99,
     },
+  },
+  {
+    priceChartingId: "demo-umbreon-94-holo",
+    name: "Umbreon #94 Holo",
+    consoleName: "Pokemon Neo Discovery",
+    category: "pokemon-card",
+    quantity: 1,
+    condition: Condition.NEAR_MINT,
+    purchasePrice: 500,
+    // Raw value barely moves, but the Grade 9 tier is worth ~5x and holding steady —
+    // exactly the "solid trend" case worth flagging as a grading candidate.
+    priceCurveUsd: [7.5, 7.8, 8.0, 8.1, 8.2, 8.25],
+    gradedPriceCurveUsd: [40, 41, 42, 44, 45, 46],
   },
   {
     priceChartingId: "demo-blastoise-base-holo",
@@ -161,6 +177,20 @@ async function main() {
       });
     }
 
+    if (seed.gradedPriceCurveUsd) {
+      for (let i = 0; i < OFFSETS_DAYS.length; i++) {
+        await prisma.priceSnapshot.create({
+          data: {
+            cardId: card.id,
+            source: PriceSource.PRICECHARTING_GUIDE,
+            priceType: "graded",
+            price: Math.round(seed.gradedPriceCurveUsd[i] * 100),
+            capturedAt: new Date(Date.now() - OFFSETS_DAYS[i] * DAY),
+          },
+        });
+      }
+    }
+
     if (seed.recentSale) {
       const sale = seed.recentSale;
       const soldAt = new Date(Date.now() - sale.daysAgo * DAY);
@@ -225,7 +255,9 @@ async function main() {
     }
 
     const alerts = await evaluateCardTrends(card.id);
-    console.log(`Seeded ${seed.name} (${alerts.length} alert(s) generated)`);
+    const gradingAlert = await evaluateGradingOpportunity(card.id, seed.condition);
+    const alertCount = alerts.length + (gradingAlert ? 1 : 0);
+    console.log(`Seeded ${seed.name} (${alertCount} alert(s) generated)`);
   }
 }
 

@@ -1,9 +1,21 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { formatCents } from "@/lib/format";
+import { formatCents, formatPriceType } from "@/lib/format";
+import { latestPriceByType } from "@/lib/cardStats";
+import { computeGradingRecommendation } from "@/lib/gradingRecs";
+import { CONDITION_TO_PRICE_TYPE } from "@/lib/grades";
 import PriceHistoryChart from "@/components/PriceHistoryChart";
 import TrendBadge from "@/components/TrendBadge";
 import CheckVariantsButton from "@/components/CheckVariantsButton";
+
+const RAW_CONDITIONS = new Set([
+  "UNGRADED",
+  "NEAR_MINT",
+  "LIGHTLY_PLAYED",
+  "MODERATELY_PLAYED",
+  "HEAVILY_PLAYED",
+  "DAMAGED",
+]);
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +40,10 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
   if (!card) notFound();
 
   const totalQuantity = card.collectionItems.reduce((sum, i) => sum + i.quantity, 0);
+  const priceLadder = latestPriceByType(card.priceSnapshots);
+  const ownedPriceTypes = new Set(card.collectionItems.map((i) => CONDITION_TO_PRICE_TYPE[i.condition]));
+  const rawItem = card.collectionItems.find((i) => RAW_CONDITIONS.has(i.condition));
+  const gradingRec = rawItem ? computeGradingRecommendation(rawItem.condition, card.priceSnapshots) : null;
 
   return (
     <div className="flex flex-col gap-8">
@@ -42,6 +58,36 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
         </div>
         <CheckVariantsButton cardId={card.id} />
       </div>
+
+      {priceLadder.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Price by grade</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+            {priceLadder.map(({ priceType, snapshot }) => {
+              const owned = ownedPriceTypes.has(priceType);
+              return (
+                <div
+                  key={priceType}
+                  className={`rounded-lg border px-3 py-2 ${
+                    owned ? "border-emerald-700 bg-emerald-500/5" : "border-zinc-800"
+                  }`}
+                >
+                  <div className="text-[11px] uppercase tracking-wide text-zinc-500">
+                    {formatPriceType(priceType)}
+                    {owned && <span className="ml-1 text-emerald-400">· owned</span>}
+                  </div>
+                  <div className="mt-0.5 font-mono text-sm text-zinc-100">{formatCents(snapshot.price)}</div>
+                </div>
+              );
+            })}
+          </div>
+          {gradingRec && (
+            <div className="mt-3 rounded-lg border border-teal-900/60 bg-teal-500/5 px-4 py-3 text-sm text-teal-300">
+              <span className="font-semibold">Grading recommended.</span> {gradingRec.summary}
+            </div>
+          )}
+        </section>
+      )}
 
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Price history</h2>

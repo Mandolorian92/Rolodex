@@ -52,6 +52,9 @@ immediately instead of waiting for the aggregate number to catch up.
     30-day peak (momentum stalling after a run)
   - Alerts are deduplicated with a 24h cooldown per (card, price type, alert type) so a
     sustained trend doesn't spam you every sync.
+  - Cards currently worth less than `ALERT_MIN_VALUE_USD` (default $5) skip trending/new-high/
+    sell-signal alerts entirely — a 140% swing on a $1.60 card isn't actionable, so it's
+    filtered before an alert is ever generated rather than just visually de-emphasized.
   - When a signal is driven by an actual sale rather than the guide price, the alert message
     says so explicitly (e.g. "Ungraded just hit a new high of $10,900.00 — based on a recent
     eBay sale") — the evidence behind the recommendation, not just a percentage.
@@ -74,8 +77,28 @@ immediately instead of waiting for the aggregate number to catch up.
   incomplete — it covers common Pokemon-style print variants, extend it for other games/
   variants as you hit them — and the comparison is guide-price-to-guide-price, since we
   don't track sale history for cards outside the collection.
+- **Grading recommendations** (`src/lib/gradingRecs.ts`, `GRADING_OPPORTUNITY` alert, "Grade
+  rec" badge): mirrors PriceCharting's own `sort=grade-recs` view, but gated by trend data
+  instead of a static price gap. For each raw (ungraded/played) card owned, it compares the
+  latest raw price against the latest Grade 9 price already sitting in that card's
+  `PriceSnapshot` history — no extra API calls, since every sync already pulls every grade
+  tier's guide price, not just the condition you own. A recommendation only fires when the
+  premium clears both a dollar floor (`GRADING_MIN_PREMIUM_USD`, default $20 — roughly what
+  grading + shipping costs) and a percentage floor (25%), **and** the Grade 9 price hasn't
+  been declining over the trailing 30 days — a big premium that's actively shrinking isn't
+  "solid," it's a fading opportunity. Runs every sync (it's a pure local computation, unlike
+  the variant check), with a 14-day alert cooldown per card.
 - The **dashboard** (`/`) is the ticker: portfolio value, average 7-day change, and a table
   per card with its latest price, 7-day change, sparkline, and any active signals.
+- The **collection** page (`/collection`) is sortable by card name, condition, latest price,
+  grade-rec premium, or date added — click a column header to sort by it, click again to
+  flip direction. When any card has a live grading recommendation, a banner links straight to
+  the Grade rec sort so the best candidates surface first.
+- A **card's detail page** (`/cards/[id]`) shows a "Price by grade" panel — every grade tier
+  PriceCharting publishes for that card at a glance (Ungraded through PSA/BGS/CGC/SGC 10),
+  with the tier(s) you actually own highlighted — plus the grading-recommendation callout
+  when one applies. Built from `latestPriceByType()` in `src/lib/cardStats.ts`, reading the
+  same already-synced `PriceSnapshot` rows as everything else — no new data source.
 - **Portfolio** (`/portfolio`, `src/lib/portfolio.ts`) is the investment-tracking view: cost
   basis vs. current value, unrealized gain $/%, a best-to-worst performer ranking, and a
   portfolio-value-over-time chart. The history chart reconstructs total value on every day
@@ -107,6 +130,8 @@ Open http://localhost:3000.
 | `ALERT_EMAIL_TO` | no | Where alert emails get sent. Required (along with `RESEND_API_KEY`) to turn notifications on |
 | `ALERT_EMAIL_FROM` | no | Sender address. Defaults to Resend's shared test sender, which works without verifying your own domain |
 | `APP_BASE_URL` | no | Used to build links back to the app inside notification emails. Defaults to `http://localhost:3000` |
+| `ALERT_MIN_VALUE_USD` | no | Skip trending/new-high/sell-signal alerts for cards currently worth less than this. Defaults to `5` |
+| `GRADING_MIN_PREMIUM_USD` | no | Minimum dollar premium (Grade 9 price minus raw price) for a grading recommendation to fire. Defaults to `20` |
 
 Without `PRICECHARTING_API_KEY` set, the app still runs — collection/alerts pages work off
 whatever's already in the database (e.g. the seed data), but syncing/importing will fail
