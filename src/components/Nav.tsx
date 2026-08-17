@@ -22,6 +22,9 @@ export default async function Nav() {
           <Link href="/portfolio" className="hover:text-zinc-50">
             Portfolio
           </Link>
+          <Link href="/stock-watch" className="hover:text-zinc-50">
+            Stock watch
+          </Link>
           <Link href="/alerts" className="relative hover:text-zinc-50">
             Alerts
             {unacknowledgedCount > 0 && (

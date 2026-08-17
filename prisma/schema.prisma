@@ -161,3 +161,82 @@ enum AlertType {
   /// rising trend — see src/lib/gradingRecs.ts.
   GRADING_OPPORTUNITY
 }
+
+// --- Stock watch: a separate feature from card price tracking above. Watches specific
+// retail product/search pages and alerts on restocks or brand-new listings (e.g. a new
+// Pokemon Elite Trainer Box going live at GameStop/Walmart/Target/Best Buy) — see
+// src/lib/stockWatch.ts and src/lib/retailers/. Deliberately notify-only: it never adds to
+// cart or checks out, since that crosses into scalper-bot territory.
+
+enum Retailer {
+  GAMESTOP
+  WALMART
+  TARGET
+  BESTBUY
+}
+
+enum WatchKind {
+  /// A specific known product page — alert when it flips from out-of-stock to in-stock.
+  PRODUCT
+  /// A search/category page for a keyword (e.g. "Elite Trainer Box") — alert when a
+  /// brand-new listing appears that wasn't there on the last check.
+  SEARCH
+}
+
+// A retailer page the user wants watched, checked on a schedule (see stockWatch.ts).
+model WatchTarget {
+  id            String    @id @default(cuid())
+  retailer      Retailer
+  kind          WatchKind @default(PRODUCT)
+  label         String
+  url           String
+  // Best Buy SKU, when known — lets the checker use Best Buy's official Products API
+  // directly instead of scraping. Required for BESTBUY + PRODUCT.
+  sku           String?
+  // Search keyword, required for SEARCH kind (e.g. "Pokemon Elite Trainer Box").
+  keyword       String?
+  active        Boolean   @default(true)
+  // Last known stock state for PRODUCT targets. Null = not checked yet.
+  inStock       Boolean?
+  lastTitle     String?
+  lastPriceCents Int?     @map("last_price_cents")
+  lastCheckedAt DateTime? @map("last_checked_at")
+  lastError     String?   @map("last_error")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  seenProducts SeenProduct[]
+  stockAlerts  StockAlert[]
+
+  @@unique([url])
+  @@map("watch_targets")
+}
+
+// A product already seen on a SEARCH-kind target, so only genuinely new listings alert.
+model SeenProduct {
+  id            String      @id @default(cuid())
+  watchTargetId String      @map("watch_target_id")
+  watchTarget   WatchTarget @relation(fields: [watchTargetId], references: [id], onDelete: Cascade)
+  externalId    String      @map("external_id") // sku or product URL, used to dedupe
+  title         String
+  url           String
+  firstSeenAt   DateTime    @default(now()) @map("first_seen_at")
+
+  @@unique([watchTargetId, externalId])
+  @@map("seen_products")
+}
+
+// A generated restock/new-listing signal for a watch target.
+model StockAlert {
+  id            String      @id @default(cuid())
+  watchTargetId String      @map("watch_target_id")
+  watchTarget   WatchTarget @relation(fields: [watchTargetId], references: [id], onDelete: Cascade)
+  message       String
+  url           String
+  acknowledged  Boolean     @default(false)
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@index([watchTargetId, createdAt])
+  @@index([acknowledged, createdAt])
+  @@map("stock_alerts")
+}

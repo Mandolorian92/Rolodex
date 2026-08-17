@@ -8,6 +8,10 @@ offers and, optionally, eBay sold comps both feed directly into the same price t
 the guide price does, so an actual sale that beats the guide shows up as a signal
 immediately instead of waiting for the aggregate number to catch up.
 
+Also includes **Stock watch** (`/stock-watch`) — a separate, notify-only feature that
+watches retail listings (GameStop/Walmart/Target/Best Buy) and emails you the moment one
+restocks. See [Stock watch](#stock-watch) below.
+
 ## Stack
 
 - **Next.js 16** (App Router) + TypeScript + Tailwind
@@ -106,6 +110,51 @@ immediately instead of waiting for the aggregate number to catch up.
   didn't — a simplification, since quantity-owned history isn't tracked, only current
   holdings applied backward.
 
+## Stock watch
+
+A separate feature from the card-price ticker above (own Prisma models, own sync path) for
+a different problem: getting notified the moment a retail listing — a Pokemon Elite Trainer
+Box, for example — comes back in stock at GameStop, Walmart, Target, or Best Buy, so you
+find out before it sells out instead of after.
+
+**This is notify-only, on purpose.** It never adds to cart or checks out. Auto-checkout is
+what turns a stock alert into a scalper bot — it's also what retailers' bot protection is
+built to fight, and getting past it reliably means residential proxy pools, CAPTCHA-solving
+services, and dozens of parallel accounts. None of that is here. This just watches and
+emails you; you still do the buying, same as everyone else refreshing the page by hand,
+just faster.
+
+- **Watch a specific product** (`/stock-watch`, "+ Watch a product", `WatchTarget` with
+  `kind: PRODUCT`) — paste a product page URL (works well for a listing that's already up
+  but marked "Sold Out"/"Coming Soon"). Each check compares against the last known state and
+  fires a `StockAlert` the moment it flips to in stock, then stays quiet while it remains in
+  stock so you're not re-notified every check.
+- **Watch for new listings** (`kind: SEARCH`, Best Buy only for now) — give it a keyword
+  (e.g. "Elite Trainer Box") instead of a specific URL; it tracks every listing it's seen
+  (`SeenProduct`) and alerts only on ones that are genuinely new since the last check. The
+  first check just establishes the baseline — it won't dump every existing search result as
+  "new".
+- **How stock is detected** (`src/lib/retailers/`): mainly by parsing the schema.org
+  Product/Offer JSON-LD that most storefronts embed in every product page for Google
+  Shopping — it's meant to be machine-read, so it's far more stable than scraping page text
+  or CSS classes that change on every redesign. Falls back to a few common "sold out"/"add
+  to cart" text patterns if a page lacks structured data. **Best Buy is the exception and
+  the most reliable of the four** — it has a free official Products API
+  (`BESTBUY_API_KEY`) with real-time availability, no scraping involved.
+- **A real caveat**: GameStop, Walmart, and Target all run bot protection (Akamai,
+  PerimeterX, etc.) in front of their storefronts. A plain server-side fetch with a
+  realistic browser header can still get blocked — that shows up as a clear error in
+  `WatchTarget.lastError` and on the `/stock-watch` page rather than crashing the check, but
+  it does mean these three may need iteration (better headers, slower polling) to stay
+  reliable, the same kind of live debugging this project went through to get PriceCharting's
+  collection import working. Best Buy sidesteps the whole problem via its official API.
+- Checks run via `POST /api/stock-watch/check` (all active targets) or `npm run
+  stock-watch` from the CLI — same "wire it up to your own cron" story as `/api/sync` (see
+  Keeping prices fresh, above). A restock window can be short, so check more frequently than
+  you'd sync card prices — every few minutes, not once a day.
+- **Notifications** reuse the same `RESEND_API_KEY`/`ALERT_EMAIL_TO` config as card alerts
+  (`src/lib/stockNotify.ts`), batched one email per check run.
+
 ## Getting started
 
 ```bash
@@ -132,6 +181,7 @@ Open http://localhost:3000.
 | `APP_BASE_URL` | no | Used to build links back to the app inside notification emails. Defaults to `http://localhost:3000` |
 | `ALERT_MIN_VALUE_USD` | no | Skip trending/new-high/sell-signal alerts for cards currently worth less than this. Defaults to `5` |
 | `GRADING_MIN_PREMIUM_USD` | no | Minimum dollar premium (Grade 9 price minus raw price) for a grading recommendation to fire. Defaults to `20` |
+| `BESTBUY_API_KEY` | no | [Free key](https://developer.bestbuy.com/) for Stock watch targets on Best Buy — real-time availability, no scraping |
 
 Without `PRICECHARTING_API_KEY` set, the app still runs — collection/alerts pages work off
 whatever's already in the database (e.g. the seed data), but syncing/importing will fail
@@ -171,6 +221,7 @@ plain cron job running `npm run sync` on a server.
 | `npm run dev` | Start the dev server |
 | `npm run build` / `npm run start` | Production build / run |
 | `npm run sync` | Refresh prices + run the trend engine from the CLI |
+| `npm run stock-watch` | Check every active Stock watch target from the CLI |
 | `npm run db:migrate` | Apply Prisma migrations |
 | `npm run db:seed` | Load demo cards with synthetic price history |
 | `npm run db:studio` | Open Prisma Studio |
@@ -183,6 +234,10 @@ that the ticker and trend engine read), `MarketSale` (sold-transaction details f
 title/link/image/condition), and `Alert` (generated signals). `PriceSnapshot.source` and
 `MarketSale.source` share one `PriceSource` enum (`PRICECHARTING_GUIDE`,
 `PRICECHARTING_SALE`, `EBAY_SALE`, `MANUAL`) so every price point's provenance is explicit.
+
+Stock watch (see above) is a separate, independent set of models: `WatchTarget` (a retailer
+page being watched), `SeenProduct` (listings already seen, for new-listing detection), and
+`StockAlert` (generated restock/new-listing signals) — none of it relates to `Card`.
 
 ### Card grades
 
@@ -217,6 +272,9 @@ grading company; at 10 it splits by grader. Our `Condition` enum mirrors that.
 - Push/SMS notifications — email is wired up (see above), push would need a service worker
   + subscription storage since there's no user accounts to hang a device token off of
 - Scheduled syncing (see above — you need to wire up your own cron)
+- Stock watch "new listing" search mode for GameStop/Walmart/Target — only Best Buy has it
+  right now, since its official API supports keyword search cleanly. The other three would
+  need scraping a search-results page, which is shakier than a single known product page.
 - Multi-user support / auth
 - CSV bulk price download (Legendary-tier PriceCharting subscribers can download the full
   price guide as CSV once/day instead of per-product API calls — not wired up yet, but
