@@ -1,5 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { syncCollection } from "@/lib/sync";
+
+// Vercel Cron sends a GET request (with an Authorization: Bearer <CRON_SECRET> header, if
+// CRON_SECRET is set) rather than POST — see vercel.json and the README's "Keeping prices
+// fresh" section. Manual triggers from the dashboard still use POST.
+export async function GET(req: NextRequest) {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return POST();
+}
 
 // Triggered manually from the dashboard, or on a schedule (e.g. Vercel Cron) to refresh
 // prices for every card currently in the collection and re-run the trend/alert engine.

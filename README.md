@@ -182,6 +182,7 @@ Open http://localhost:3000.
 | `ALERT_MIN_VALUE_USD` | no | Skip trending/new-high/sell-signal alerts for cards currently worth less than this. Defaults to `5` |
 | `GRADING_MIN_PREMIUM_USD` | no | Minimum dollar premium (Grade 9 price minus raw price) for a grading recommendation to fire. Defaults to `20` |
 | `BESTBUY_API_KEY` | no | [Free key](https://developer.bestbuy.com/) for Stock watch targets on Best Buy — real-time availability, no scraping |
+| `CRON_SECRET` | no | Shared secret checked on the cron-only `GET /api/sync` and `GET /api/stock-watch/check` — set it to match Vercel's auto-added header if deploying there |
 
 Without `PRICECHARTING_API_KEY` set, the app still runs — collection/alerts pages work off
 whatever's already in the database (e.g. the seed data), but syncing/importing will fail
@@ -208,11 +209,25 @@ to get started — the default `onboarding@resend.dev` sender works, though it c
 to the email address on your Resend account until you verify a domain. Swap in your own
 domain via `ALERT_EMAIL_FROM` once you have one set up.
 
-### Keeping prices fresh
+### Keeping prices — and stock watches — fresh
 
-Nothing calls `/api/sync` automatically. Wire it up to whatever scheduler you're deploying
-with, e.g. [Vercel Cron](https://vercel.com/docs/cron-jobs) hitting `POST /api/sync`, or a
-plain cron job running `npm run sync` on a server.
+`vercel.json` wires up [Vercel Cron](https://vercel.com/docs/cron-jobs) for both `/api/sync`
+(daily, `0 6 * * *`) and `/api/stock-watch/check` (every 5 minutes, `*/5 * * * *`) if you
+deploy there — it works automatically, no extra setup. A couple of things worth knowing:
+
+- **Vercel Cron sends a GET request**, not POST, so both routes have a `GET` handler
+  alongside the manual-trigger `POST` one. If `CRON_SECRET` is set, `GET` requires a
+  matching `Authorization: Bearer` header (which Vercel adds automatically for its own Cron
+  Jobs once you set the same value in your project's environment variables) — otherwise
+  it's open, same as the rest of the app's unauthenticated routes.
+- **Vercel's Hobby plan only allows once-daily cron runs** — the `*/5 * * * *` schedule
+  needs a Pro plan. On Hobby, either upgrade or fall back to hitting `/api/stock-watch/check`
+  yourself (browser tab, phone shortcut, another always-on machine running `npm run
+  stock-watch` on a loop) when you're specifically expecting a drop — a restock can sell out
+  in minutes, so once-a-day checking mostly defeats the point.
+- Not deploying to Vercel? Wire up whatever scheduler you've got instead — a plain cron job
+  running `npm run sync` / `npm run stock-watch`, GitHub Actions, etc. `vercel.json` is
+  simply ignored off Vercel.
 
 ## Scripts
 
