@@ -50,7 +50,19 @@ restocks. See [Stock watch](#stock-watch) below.
   All PriceCharting calls go through a shared throttle (`src/lib/rateLimit.ts`) to stay
   under their hard 1 request/second limit — exceeding it risks API access being revoked.
   Note this means two PriceCharting calls per card per sync (guide + sold offers), so a
-  full sync takes roughly 2 seconds/card.
+  full sync takes roughly 2 seconds/card — **for a few hundred cards that's genuinely
+  15-25+ minutes, not a bug or a hang.** A card whose variant check is due
+  (`src/lib/variants.ts`) adds up to 6 more calls on top, capped per sync run at
+  `MAX_VARIANT_CHECKS_PER_SYNC` (default 25, prioritizing whichever cards have gone longest
+  without a check) so a big batch of newly-added cards doesn't turn one sync into an hour —
+  the backlog just drains across a few sync runs instead. The dashboard's "Sync now" button
+  polls `GET /api/sync/status` (`src/lib/syncProgress.ts`) every couple seconds and shows
+  real progress (`Syncing 143/612 — Charizard #4 Holo`) for exactly this reason — a long
+  black-box wait is indistinguishable from broken, so it isn't one. That status reflects
+  whatever sync is actually running on the server, including one kicked off by the
+  background auto-sync scheduler rather than a click (see below) — closing the browser tab
+  doesn't stop a sync in progress either, since it's a server-side job, not tied to the
+  request that started it.
 - The **trend engine** (`src/lib/trends.ts`) looks at each card's merged price+sales history
   and fires `Alert` rows for:
   - **Trending up / down** — ≥10% move over the trailing 7 days
