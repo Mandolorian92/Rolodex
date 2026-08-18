@@ -7,6 +7,7 @@ import { CONDITION_TO_PRICE_TYPE } from "@/lib/grades";
 import PriceHistoryChart from "@/components/PriceHistoryChart";
 import TrendBadge from "@/components/TrendBadge";
 import CheckVariantsButton from "@/components/CheckVariantsButton";
+import CardMetaEditor from "@/components/CardMetaEditor";
 
 const RAW_CONDITIONS = new Set([
   "UNGRADED",
@@ -55,6 +56,9 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
             {totalQuantity > 0 ? `You own ${totalQuantity} of these` : "Not currently in your collection"}
             {card.variantLabel && ` · Variant on file: ${card.variantLabel}`}
           </p>
+          <div className="mt-2">
+            <CardMetaEditor cardId={card.id} category={card.category} language={card.language} />
+          </div>
         </div>
         <CheckVariantsButton cardId={card.id} />
       </div>

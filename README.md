@@ -103,9 +103,20 @@ restocks. See [Stock watch](#stock-watch) below.
   fixed list of tokens like "French"/"Japanese" appearing in the product or set name; no
   marker found means English/unspecified, not a confirmed "this is English"). Both are
   derived from text already on hand, no extra API calls, computed on import, on every sync
-  (so cards imported before this existed get backfilled automatically), and on manual add.
-  Same caveat as the variant-token list: necessarily incomplete, extend the token lists as
-  new sets/languages come up.
+  (so cards imported before this existed get backfilled automatically), and on manual add —
+  but only ever fill in a currently-**unset** value, never overwrite one, so a manual
+  correction (see below) sticks and doesn't get quietly reset by the next sync.
+
+  Both are visible right on the collection table (a small line under the console name) and
+  editable on a card's own page — click it to switch to a category dropdown / language text
+  field with autocomplete, no page reload. **Language especially will miss real cards**: it
+  only catches a language mentioned by name somewhere in the text, so a Japanese- or
+  Korean-exclusive set whose PriceCharting listing doesn't literally contain the word
+  "Japanese"/"Korean" comes back unspecified — no amount of tuning the token list fixes
+  that blind spot, since it's a naming-convention gap, not a bug. That's exactly why the
+  manual edit exists: use it to correct anything the guess gets wrong, and it'll hold. Same
+  caveat as the variant-token list otherwise: necessarily incomplete, extend the token lists
+  in `src/lib/cardMeta.ts` as new sets/languages come up.
 - The **collection** page (`/collection`) is sortable by card name, condition, latest price,
   grade-rec premium, or date added — click a column header to sort by it, click again to
   flip direction. It's also filterable by category and language (dropdowns only appear once
@@ -212,6 +223,8 @@ Open http://localhost:3000.
 | `GRADING_MIN_PREMIUM_USD` | no | Minimum dollar premium (Grade 9 price minus raw price) for a grading recommendation to fire. Defaults to `20` |
 | `BESTBUY_API_KEY` | no | [Free key](https://developer.bestbuy.com/) for Stock watch targets on Best Buy — real-time availability, no scraping |
 | `CRON_SECRET` | no | Shared secret checked on the cron-only `GET /api/sync` and `GET /api/stock-watch/check` — set it to match Vercel's auto-added header if deploying there |
+| `AUTO_SYNC_INTERVAL_MINUTES` | no | How often a long-running process auto-refreshes prices in the background. `0` disables it. Defaults to `60` |
+| `AUTO_STOCK_WATCH_INTERVAL_MINUTES` | no | Same, for stock-watch checks. Defaults to `5` |
 
 Without `PRICECHARTING_API_KEY` set, the app still runs — collection/alerts pages work off
 whatever's already in the database (e.g. the seed data), but syncing/importing will fail
@@ -240,9 +253,24 @@ domain via `ALERT_EMAIL_FROM` once you have one set up.
 
 ### Keeping prices — and stock watches — fresh
 
-`vercel.json` wires up [Vercel Cron](https://vercel.com/docs/cron-jobs) for both `/api/sync`
-(daily, `0 6 * * *`) and `/api/stock-watch/check` (every 5 minutes, `*/5 * * * *`) if you
-deploy there — it works automatically, no extra setup. A couple of things worth knowing:
+**Running locally (`npm run dev`/`npm start`) or on any self-hosted setup that keeps one
+process alive**, `src/instrumentation.ts` starts a background scheduler
+(`src/lib/autoSync.ts`) automatically when the server boots — no cron, no extra setup,
+nothing to click. By default it refreshes prices every 60 minutes
+(`AUTO_SYNC_INTERVAL_MINUTES`) and checks stock-watch targets every 5 minutes
+(`AUTO_STOCK_WATCH_INTERVAL_MINUTES`); set either to `0` to disable it, or tune the interval
+in `.env`. This is what makes it behave like an actual ticker instead of "sync manually or
+it never updates" — as long as the process stays running, the data underneath it keeps
+itself current in the background while you use the app. Restarting the dev server doesn't
+lose anything: every price ever pulled is already sitting in Postgres, so the UI is instant
+regardless of when the last sync ran — auto-sync just keeps that history from going stale.
+
+**Deploying to Vercel (or any serverless host)**, the interval-based scheduler above does
+nothing useful — serverless functions don't keep a process alive between requests, so a
+`setInterval` there never actually fires. `vercel.json` wires up
+[Vercel Cron](https://vercel.com/docs/cron-jobs) for both `/api/sync` (daily, `0 6 * * *`)
+and `/api/stock-watch/check` (every 5 minutes, `*/5 * * * *`) instead — that's the mechanism
+that applies there. A couple of things worth knowing about it:
 
 - **Vercel Cron sends a GET request**, not POST, so both routes have a `GET` handler
   alongside the manual-trigger `POST` one. If `CRON_SECRET` is set, `GET` requires a

@@ -84,25 +84,29 @@ async function importOffer(offer: PriceChartingOffer, summary: ImportSummary) {
   // collection, and blind writes to CollectionItem would also stomp local edits. So each
   // step reads first and only writes when something's actually different, then reports
   // new/updated/unchanged separately so it's obvious re-imports are only touching the delta.
-  // Comparing category/language here too means a real import naturally backfills cards that
-  // predate those fields — no separate migration script needed.
   const existingCard = await prisma.card.findUnique({ where: { priceChartingId } });
 
   let card = existingCard;
   let cardChanged = false;
   if (!card) {
+    // A real import naturally backfills category/language for cards that predate those
+    // fields too — no separate migration script needed.
     card = await prisma.card.create({ data: { priceChartingId, name, consoleName, category, language } });
-  } else if (
-    card.name !== name ||
-    card.consoleName !== consoleName ||
-    card.category !== category ||
-    card.language !== language
-  ) {
-    card = await prisma.card.update({
-      where: { id: card.id },
-      data: { name, consoleName, category, language },
-    });
-    cardChanged = true;
+  } else {
+    const updates: { name?: string; consoleName?: string | null; category?: string | null; language?: string | null } = {};
+    if (card.name !== name) updates.name = name;
+    if (card.consoleName !== consoleName) updates.consoleName = consoleName;
+    // Only fill category/language when currently null, never overwrite — the heuristic
+    // misses real cases (e.g. a Japanese set without the word "Japanese" in its name), so
+    // once a value is set — by this heuristic or a manual correction on the card page — a
+    // re-import shouldn't stomp it.
+    if (card.category === null && category !== null) updates.category = category;
+    if (card.language === null && language !== null) updates.language = language;
+
+    if (Object.keys(updates).length > 0) {
+      card = await prisma.card.update({ where: { id: card.id }, data: updates });
+      cardChanged = true;
+    }
   }
 
   const existingItem = await prisma.collectionItem.findUnique({

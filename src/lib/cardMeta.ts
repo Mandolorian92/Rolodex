@@ -64,7 +64,7 @@ export function deriveCategory(consoleName?: string | null): string | null {
  * explicitly, so absence here isn't a confirmed "this is English," just "no foreign-language
  * marker was found."
  */
-const LANGUAGE_TOKENS = [
+export const LANGUAGE_TOKENS = [
   "Japanese",
   "Korean",
   "Chinese",

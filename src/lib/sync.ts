@@ -46,12 +46,16 @@ export async function syncCard(cardId: string): Promise<CardSyncResult> {
 
     // Category/language are derived from data this call already returned — no extra API
     // cost — so every sync also backfills them for cards imported before this existed,
-    // without needing a separate one-off migration script.
+    // without needing a separate one-off migration script. Only fills in a currently-null
+    // value, never overwrites one — the heuristic misses real cases (e.g. a Japanese set
+    // whose name doesn't literally contain "Japanese"), so once a value is set — by this
+    // heuristic or by a manual correction on the card page — a later sync won't stomp it.
     const consoleName = product["console-name"] ?? card.consoleName;
-    const category = deriveCategory(consoleName);
-    const language = detectLanguage(product["product-name"] ?? card.name, consoleName);
-    if (category !== card.category || language !== card.language) {
-      await prisma.card.update({ where: { id: card.id }, data: { category, language } });
+    const data: { category?: string | null; language?: string | null } = {};
+    if (card.category === null) data.category = deriveCategory(consoleName);
+    if (card.language === null) data.language = detectLanguage(product["product-name"] ?? card.name, consoleName);
+    if (Object.keys(data).length > 0) {
+      await prisma.card.update({ where: { id: card.id }, data });
     }
   } catch (err) {
     result.error = err instanceof Error ? err.message : String(err);

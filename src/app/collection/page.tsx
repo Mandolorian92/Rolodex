@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { pickPrimarySeries } from "@/lib/cardStats";
 import { computeGradingRecommendation } from "@/lib/gradingRecs";
-import { buildCategoryOptions, buildLanguageOptions, matchesCardMetaFilter } from "@/lib/cardMeta";
+import { buildCategoryOptions, buildLanguageOptions, matchesCardMetaFilter, CATEGORY_LABELS } from "@/lib/cardMeta";
 import { formatCents, formatPriceType, formatPct } from "@/lib/format";
 import CollectionRowActions from "@/components/CollectionRowActions";
 import ImportCollectionForm from "@/components/ImportCollectionForm";
@@ -197,6 +197,10 @@ export default async function CollectionPage({
                     {item.card.consoleName && (
                       <div className="text-xs text-zinc-500">{item.card.consoleName}</div>
                     )}
+                    <div className="mt-0.5 flex gap-1.5 text-[11px] text-zinc-600">
+                      <span>{item.card.category ? CATEGORY_LABELS[item.card.category] ?? item.card.category : "Unknown category"}</span>
+                      {item.card.language && <span>· {item.card.language}</span>}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-zinc-400">{item.condition.replace(/_/g, " ")}</td>
                   <td className="px-4 py-3 font-mono text-zinc-100">
