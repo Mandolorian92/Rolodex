@@ -2,9 +2,11 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { pickPrimarySeries } from "@/lib/cardStats";
 import { computeGradingRecommendation } from "@/lib/gradingRecs";
+import { buildCategoryOptions, buildLanguageOptions, matchesCardMetaFilter } from "@/lib/cardMeta";
 import { formatCents, formatPriceType, formatPct } from "@/lib/format";
 import CollectionRowActions from "@/components/CollectionRowActions";
 import ImportCollectionForm from "@/components/ImportCollectionForm";
+import CollectionFilters from "@/components/CollectionFilters";
 
 export const dynamic = "force-dynamic";
 
@@ -31,30 +33,43 @@ function isSortKey(value: string | undefined): value is SortKey {
   return !!value && value in DEFAULT_DIR;
 }
 
-function sortHref(key: SortKey, currentSort: SortKey, currentDir: SortDir) {
+function sortHref(
+  key: SortKey,
+  currentSort: SortKey,
+  currentDir: SortDir,
+  category: string,
+  language: string
+) {
   const nextDir: SortDir =
     currentSort === key && currentDir === DEFAULT_DIR[key]
       ? DEFAULT_DIR[key] === "asc"
         ? "desc"
         : "asc"
       : DEFAULT_DIR[key];
-  return `/collection?sort=${key}&dir=${nextDir}`;
+  const params = new URLSearchParams({ sort: key, dir: nextDir });
+  if (category !== "all") params.set("category", category);
+  if (language !== "all") params.set("language", language);
+  return `/collection?${params.toString()}`;
 }
 
 function SortHeader({
   sortKey,
   currentSort,
   currentDir,
+  category,
+  language,
 }: {
   sortKey: SortKey;
   currentSort: SortKey;
   currentDir: SortDir;
+  category: string;
+  language: string;
 }) {
   const active = currentSort === sortKey;
   return (
     <th className="px-4 py-3 font-medium">
       <Link
-        href={sortHref(sortKey, currentSort, currentDir)}
+        href={sortHref(sortKey, currentSort, currentDir, category, language)}
         className={`inline-flex items-center gap-1 hover:text-zinc-200 ${active ? "text-zinc-200" : ""}`}
       >
         {SORT_LABELS[sortKey]}
@@ -67,11 +82,13 @@ function SortHeader({
 export default async function CollectionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sort?: string; dir?: string }>;
+  searchParams: Promise<{ sort?: string; dir?: string; category?: string; language?: string }>;
 }) {
   const params = await searchParams;
   const sort: SortKey = isSortKey(params.sort) ? params.sort : "dateAdded";
   const dir: SortDir = params.dir === "asc" || params.dir === "desc" ? params.dir : DEFAULT_DIR[sort];
+  const category = params.category ?? "all";
+  const language = params.language ?? "all";
 
   const items = await prisma.collectionItem.findMany({
     include: {
@@ -79,7 +96,12 @@ export default async function CollectionPage({
     },
   });
 
-  const rows = items.map((item) => ({
+  const categoryOptions = buildCategoryOptions(items.map((i) => i.card));
+  const languageOptions = buildLanguageOptions(items.map((i) => i.card));
+
+  const filteredItems = items.filter((item) => matchesCardMetaFilter(item.card, category, language));
+
+  const rows = filteredItems.map((item) => ({
     item,
     primary: pickPrimarySeries(item.card.priceSnapshots, item.condition),
     gradingRec: computeGradingRecommendation(item.condition, item.card.priceSnapshots),
@@ -126,9 +148,17 @@ export default async function CollectionPage({
 
       <ImportCollectionForm />
 
+      <CollectionFilters
+        category={category}
+        language={language}
+        categoryOptions={categoryOptions}
+        languageOptions={languageOptions}
+        extraParams={{ sort, dir }}
+      />
+
       {gradeRecCount > 0 && (
         <Link
-          href={sortHref("gradeRec", sort, dir)}
+          href={sortHref("gradeRec", sort, dir, category, language)}
           className="rounded-lg border border-teal-900/60 bg-teal-500/5 px-4 py-3 text-sm text-teal-300 hover:bg-teal-500/10"
         >
           {gradeRecCount} card{gradeRecCount === 1 ? "" : "s"} with a solid grading opportunity — sort by Grade rec
@@ -138,17 +168,19 @@ export default async function CollectionPage({
 
       {items.length === 0 ? (
         <p className="text-sm text-zinc-500">Nothing here yet. Add a card to get started.</p>
+      ) : filteredItems.length === 0 ? (
+        <p className="text-sm text-zinc-500">No cards match this filter.</p>
       ) : (
         <div className="overflow-hidden rounded-lg border border-zinc-800">
           <table className="w-full text-left text-sm">
             <thead className="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
               <tr>
-                <SortHeader sortKey="name" currentSort={sort} currentDir={dir} />
-                <SortHeader sortKey="condition" currentSort={sort} currentDir={dir} />
-                <SortHeader sortKey="price" currentSort={sort} currentDir={dir} />
+                <SortHeader sortKey="name" currentSort={sort} currentDir={dir} category={category} language={language} />
+                <SortHeader sortKey="condition" currentSort={sort} currentDir={dir} category={category} language={language} />
+                <SortHeader sortKey="price" currentSort={sort} currentDir={dir} category={category} language={language} />
                 <th className="px-4 py-3 font-medium">Purchase price</th>
-                <SortHeader sortKey="gradeRec" currentSort={sort} currentDir={dir} />
-                <SortHeader sortKey="dateAdded" currentSort={sort} currentDir={dir} />
+                <SortHeader sortKey="gradeRec" currentSort={sort} currentDir={dir} category={category} language={language} />
+                <SortHeader sortKey="dateAdded" currentSort={sort} currentDir={dir} category={category} language={language} />
                 <th className="px-4 py-3 font-medium">Quantity</th>
               </tr>
             </thead>

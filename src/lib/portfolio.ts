@@ -69,6 +69,37 @@ export function computePortfolioSummary(items: CollectionItemWithCard[]): Portfo
   };
 }
 
+export interface HypotheticalValue {
+  priceType: string;
+  value: number; // cents — sum of (latest price at this tier * quantity), over items that have it
+  itemsWithData: number;
+  totalItems: number;
+}
+
+/**
+ * "What would my whole collection be worth if every copy were at this grade tier" — e.g.
+ * everything Raw, or everything PSA 10. Unlike the owned-condition value in
+ * computePortfolioSummary, this always prices every collection item at the same tier,
+ * regardless of what condition it's actually owned in, using whatever guide-price data that
+ * card already has for that tier (no extra API calls). Items whose card has never seen a
+ * price at this tier are excluded and counted in itemsWithData/totalItems, so partial
+ * coverage is visible rather than silently understating the total.
+ */
+export function computeHypotheticalValue(items: CollectionItemWithCard[], priceType: string): HypotheticalValue {
+  let value = 0;
+  let itemsWithData = 0;
+
+  for (const item of items) {
+    const series = item.card.priceSnapshots.filter((s) => s.priceType === priceType);
+    if (series.length === 0) continue;
+    const latest = series.reduce((a, b) => (a.capturedAt > b.capturedAt ? a : b));
+    value += latest.price * item.quantity;
+    itemsWithData += 1;
+  }
+
+  return { priceType, value, itemsWithData, totalItems: items.length };
+}
+
 export interface PortfolioHistoryPoint {
   date: string; // ISO
   value: number; // cents

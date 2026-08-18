@@ -24,7 +24,11 @@ model Card {
   priceChartingId  String    @unique @map("pricecharting_id")
   name             String
   consoleName      String?   @map("console_name") // e.g. "Pokemon Base Set", "Magic: Alpha"
-  category         String? // e.g. "pokemon-card", "sports-card", "magic-card"
+  category         String? // e.g. "pokemon-card", "sports-card", "magic-card" — see src/lib/cardMeta.ts
+  // Best-effort language guess parsed from the product/console name (e.g. "French",
+  // "Japanese") — see detectLanguage() in src/lib/cardMeta.ts. Null means English/unknown;
+  // most catalogs don't mark English cards explicitly, so absence isn't a hard signal.
+  language         String?
   imageUrl         String?   @map("image_url")
   // Print variant detected from the product name (e.g. "Holo", "Reverse Holo", "Cosmos
   // Holo") — see src/lib/variants.ts. Used to find same-card/different-variant siblings

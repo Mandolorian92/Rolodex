@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Condition } from "@/generated/prisma/client";
 import { syncCard } from "@/lib/sync";
+import { deriveCategory, detectLanguage } from "@/lib/cardMeta";
 
 export async function GET() {
   const items = await prisma.collectionItem.findMany({
@@ -38,11 +39,15 @@ export async function POST(req: NextRequest) {
   }
   const { priceChartingId, name, consoleName, category, imageUrl, quantity, condition, purchasePrice, notes } =
     parsed.data;
+  // The add-card search UI doesn't collect category, so derive it (and language) the same
+  // way import does — an explicit category from the caller still wins if one's given.
+  const resolvedCategory = category ?? deriveCategory(consoleName);
+  const language = detectLanguage(name, consoleName);
 
   const card = await prisma.card.upsert({
     where: { priceChartingId },
-    create: { priceChartingId, name, consoleName, category, imageUrl },
-    update: { name, consoleName, category, imageUrl },
+    create: { priceChartingId, name, consoleName, category: resolvedCategory, language, imageUrl },
+    update: { name, consoleName, category: resolvedCategory, language, imageUrl },
   });
 
   const item = await prisma.collectionItem.upsert({

@@ -34,6 +34,8 @@ interface SeedCard {
   name: string;
   consoleName: string;
   category: string;
+  /** Best-effort language guess, e.g. "French" — omit for English/unspecified. */
+  language?: string;
   quantity: number;
   condition: Condition;
   purchasePrice: number; // cents
@@ -105,6 +107,17 @@ const SEED_CARDS: SeedCard[] = [
     priceCurveUsd: [120, 118, 115, 108, 100, 92],
   },
   {
+    priceChartingId: "demo-pikachu-base-french",
+    name: "Pikachu #58 (French)",
+    consoleName: "Pokemon Base Set",
+    category: "pokemon-card",
+    language: "French",
+    quantity: 3,
+    condition: Condition.NEAR_MINT,
+    purchasePrice: 300,
+    priceCurveUsd: [4.0, 4.1, 4.3, 4.4, 4.5, 4.6],
+  },
+  {
     priceChartingId: "demo-jordan-1986-fleer",
     name: "Michael Jordan Rookie #57",
     consoleName: "1986 Fleer Basketball",
@@ -145,6 +158,7 @@ async function main() {
         name: seed.name,
         consoleName: seed.consoleName,
         category: seed.category,
+        language: seed.language ?? null,
       },
       update: {},
     });

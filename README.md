@@ -97,10 +97,31 @@ restocks. See [Stock watch](#stock-watch) below.
   the variant check), with a 14-day alert cooldown per card.
 - The **dashboard** (`/`) is the ticker: portfolio value, average 7-day change, and a table
   per card with its latest price, 7-day change, sparkline, and any active signals.
+- **Category and language** (`src/lib/cardMeta.ts`): every card gets a best-effort category
+  (`pokemon-card`/`sports-card`/`magic-card`/`yugioh-card`/`other-card`, guessed from its
+  console/set name — e.g. "1986 Fleer Basketball" → sports) and language (guessed from a
+  fixed list of tokens like "French"/"Japanese" appearing in the product or set name; no
+  marker found means English/unspecified, not a confirmed "this is English"). Both are
+  derived from text already on hand, no extra API calls, computed on import, on every sync
+  (so cards imported before this existed get backfilled automatically), and on manual add.
+  Same caveat as the variant-token list: necessarily incomplete, extend the token lists as
+  new sets/languages come up.
 - The **collection** page (`/collection`) is sortable by card name, condition, latest price,
   grade-rec premium, or date added — click a column header to sort by it, click again to
-  flip direction. When any card has a live grading recommendation, a banner links straight to
-  the Grade rec sort so the best candidates surface first.
+  flip direction. It's also filterable by category and language (dropdowns only appear once
+  more than one value is actually present in your collection) — e.g. isolate just Pokemon
+  cards, or just the ones in French. When any card has a live grading recommendation, a
+  banner links straight to the Grade rec sort so the best candidates surface first.
+- **Card values** (`/collection/values`) answers "what's my best stuff worth, at which
+  grade" two ways, both filterable by the same category/language dropdowns:
+  - **Top cards** — every card ranked by its value at a single grade tier you pick (Raw
+    through PSA/BGS/CGC/SGC 10), with a "Grading rec" callout on any card that has one,
+    regardless of which tier you're currently ranked by.
+  - **Grade matrix** — the inverse view: one row per card, with Ungraded/PSA 7/8/9/10 as
+    columns, so you can scan a whole shelf's value across grades at a glance instead of
+    opening each card's detail page one at a time.
+  Both read from `latestPriceByType()` (`src/lib/cardStats.ts`) — the same already-synced
+  per-tier guide prices the card detail page's "Price by grade" panel uses, not a new pull.
 - A **card's detail page** (`/cards/[id]`) shows a "Price by grade" panel — every grade tier
   PriceCharting publishes for that card at a glance (Ungraded through PSA/BGS/CGC/SGC 10),
   with the tier(s) you actually own highlighted — plus the grading-recommendation callout
@@ -111,7 +132,12 @@ restocks. See [Stock watch](#stock-watch) below.
   portfolio-value-over-time chart. The history chart reconstructs total value on every day
   any card got a fresh price, carrying forward each card's last known price on days it
   didn't — a simplification, since quantity-owned history isn't tracked, only current
-  holdings applied backward.
+  holdings applied backward. It also shows two hypothetical totals — "if everything were
+  Raw" and "if everything were PSA 10" (`computeHypotheticalValue()`) — pricing every owned
+  copy at that one tier regardless of what condition it's actually in, so you can size up
+  how much value sits between raw and graded across the whole collection at once. Cards
+  missing that tier's price data are excluded from the total (and called out by count)
+  rather than counted as zero.
 
 ## Stock watch
 
@@ -279,6 +305,11 @@ grading company; at 10 it splits by grader. Our `Condition` enum mirrors that.
 
 ## Known limitations
 
+- **Category and language are guesses, not confirmed facts** — see `src/lib/cardMeta.ts`.
+  An unusual set name that doesn't match any known token lands in "Other" rather than the
+  right category; a foreign-language card with no recognizable marker in its name shows up
+  as "English / unspecified" rather than flagged wrong. Worth a glance if a filter looks off,
+  same caveat as the variant-token list.
 - **Re-importing a card whose condition changed on PriceCharting** (e.g. you re-graded it)
   creates a new `CollectionItem` row for the new condition rather than replacing the old
   one, since matching is keyed on `(card, condition)`. The old row is left stale rather than

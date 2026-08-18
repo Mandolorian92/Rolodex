@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { PriceSource } from "@/generated/prisma/client";
 import { getAllOffers, type PriceChartingOffer } from "@/lib/pricecharting";
 import { parseConditionString, CONDITION_TO_PRICE_TYPE } from "@/lib/grades";
+import { deriveCategory, detectLanguage } from "@/lib/cardMeta";
 
 export interface ImportSummary {
   offersFound: number;
@@ -75,20 +76,32 @@ async function importOffer(offer: PriceChartingOffer, summary: ImportSummary) {
   const quantity = offer.quantity && offer.quantity > 0 ? offer.quantity : 1;
   const name = offer["product-name"];
   const consoleName = offer["console-name"] ?? null;
+  const category = deriveCategory(consoleName);
+  const language = detectLanguage(name, consoleName);
 
   // Re-running the import (e.g. after adding more cards on PriceCharting) shouldn't re-write
   // everything that hasn't actually changed — that's wasted DB writes on a 600-card
   // collection, and blind writes to CollectionItem would also stomp local edits. So each
   // step reads first and only writes when something's actually different, then reports
   // new/updated/unchanged separately so it's obvious re-imports are only touching the delta.
+  // Comparing category/language here too means a real import naturally backfills cards that
+  // predate those fields — no separate migration script needed.
   const existingCard = await prisma.card.findUnique({ where: { priceChartingId } });
 
   let card = existingCard;
   let cardChanged = false;
   if (!card) {
-    card = await prisma.card.create({ data: { priceChartingId, name, consoleName } });
-  } else if (card.name !== name || card.consoleName !== consoleName) {
-    card = await prisma.card.update({ where: { id: card.id }, data: { name, consoleName } });
+    card = await prisma.card.create({ data: { priceChartingId, name, consoleName, category, language } });
+  } else if (
+    card.name !== name ||
+    card.consoleName !== consoleName ||
+    card.category !== category ||
+    card.language !== language
+  ) {
+    card = await prisma.card.update({
+      where: { id: card.id },
+      data: { name, consoleName, category, language },
+    });
     cardChanged = true;
   }
 

@@ -6,6 +6,7 @@ import { evaluateCardTrends } from "@/lib/trends";
 import { notifyNewAlerts, type AlertWithCard } from "@/lib/notify";
 import { checkForHigherValueVariants, shouldRecheckVariant } from "@/lib/variants";
 import { evaluateGradingOpportunity } from "@/lib/gradingRecs";
+import { deriveCategory, detectLanguage } from "@/lib/cardMeta";
 
 export interface CardSyncResult {
   cardId: string;
@@ -41,6 +42,16 @@ export async function syncCard(cardId: string): Promise<CardSyncResult> {
         data: { cardId: card.id, source: PriceSource.PRICECHARTING_GUIDE, priceType, price: cents },
       });
       result.guideSnapshotsCreated += 1;
+    }
+
+    // Category/language are derived from data this call already returned — no extra API
+    // cost — so every sync also backfills them for cards imported before this existed,
+    // without needing a separate one-off migration script.
+    const consoleName = product["console-name"] ?? card.consoleName;
+    const category = deriveCategory(consoleName);
+    const language = detectLanguage(product["product-name"] ?? card.name, consoleName);
+    if (category !== card.category || language !== card.language) {
+      await prisma.card.update({ where: { id: card.id }, data: { category, language } });
     }
   } catch (err) {
     result.error = err instanceof Error ? err.message : String(err);

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { computePortfolioSummary, computePortfolioHistory } from "@/lib/portfolio";
+import { computePortfolioSummary, computePortfolioHistory, computeHypotheticalValue } from "@/lib/portfolio";
 import { formatCents, formatPct, formatPriceType } from "@/lib/format";
 import StatCard from "@/components/StatCard";
 import PortfolioValueChart from "@/components/PortfolioValueChart";
@@ -31,6 +31,8 @@ export default async function PortfolioPage() {
 
   const { rows, totals } = computePortfolioSummary(items);
   const history = computePortfolioHistory(items);
+  const rawValue = computeHypotheticalValue(items, "loose");
+  const psa10Value = computeHypotheticalValue(items, "manual-only");
 
   const ranked = rows
     .filter((r) => r.gainPct !== null)
@@ -63,6 +65,28 @@ export default async function PortfolioPage() {
             `${totals.itemsMissingPrice} card(s) have no price data yet — sync to pull one.`}
         </p>
       )}
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+          Collection value at a single grade
+        </h2>
+        <p className="mb-3 text-xs text-zinc-600">
+          What the whole collection would be worth if every copy were priced at that tier —
+          not what you actually own it as. Useful for sizing up how much is on the table
+          between raw and graded.
+        </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <StatCard label="If everything were Raw" value={formatCents(rawValue.value)} />
+          <StatCard label="If everything were PSA 10" value={formatCents(psa10Value.value)} />
+        </div>
+        {(rawValue.itemsWithData < rawValue.totalItems || psa10Value.itemsWithData < psa10Value.totalItems) && (
+          <p className="mt-2 text-xs text-zinc-600">
+            Raw pricing available for {rawValue.itemsWithData} of {rawValue.totalItems} card(s); PSA 10 pricing
+            available for {psa10Value.itemsWithData} of {psa10Value.totalItems}. Cards without that tier&apos;s data
+            are excluded from the corresponding total rather than counted as zero.
+          </p>
+        )}
+      </section>
 
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Value over time</h2>
