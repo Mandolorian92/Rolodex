@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 
 interface ImportSummary {
   offersFound: number;
-  cardsImported: number;
+  newCards: number;
+  updatedCards: number;
+  unchangedCards: number;
   priceSnapshotsCreated: number;
   skipped: Array<{ offer: string; reason: string }>;
 }
@@ -88,9 +90,10 @@ export default function ImportCollectionForm() {
       {error && <p className="text-sm text-rose-400">{error}</p>}
       {result && (
         <p className="text-sm text-emerald-400">
-          Found {result.offersFound} offer(s), imported {result.cardsImported} card(s),{" "}
-          {result.priceSnapshotsCreated} initial price(s) recorded
-          {result.skipped.length > 0 ? `, ${result.skipped.length} skipped` : ""}.
+          Found {result.offersFound} offer(s): {result.newCards} new, {result.updatedCards} updated,{" "}
+          {result.unchangedCards} already up to date (skipped, not re-written),{" "}
+          {result.priceSnapshotsCreated} new price(s) recorded
+          {result.skipped.length > 0 ? `, ${result.skipped.length} skipped with an error` : ""}.
         </p>
       )}
     </form>

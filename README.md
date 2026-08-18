@@ -29,8 +29,11 @@ restocks. See [Stock watch](#stock-watch) below.
   - **Import** (`src/lib/import.ts`, `POST /api/collection/import`, the "Import from
     PriceCharting" button on `/collection`) — pulls your existing PriceCharting collection
     in one call via the Marketplace API (`/api/offers?status=collection`), including a
-    starting price for each card. Safe to re-run; it syncs quantity/condition from
-    PriceCharting rather than duplicating.
+    starting price for each card. Safe to re-run — and cheap to: each offer is read-checked
+    against what's already on file first, and only actually written (card, quantity/
+    condition, or a new price snapshot) when something's genuinely different. Re-importing a
+    600-card collection where only 5 changed does 5 writes, not 600 — the result summary
+    breaks out new/updated/unchanged counts so that's visible, not just assumed.
   - **Manual add** (`/collection/add`) — search the catalog and add a card by hand.
 - A **sync** (`src/lib/sync.ts`, exposed as `POST /api/sync` and `npm run sync`) does three
   things per card, in order:
