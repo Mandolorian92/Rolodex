@@ -62,7 +62,13 @@ restocks. See [Stock watch](#stock-watch) below.
   whatever sync is actually running on the server, including one kicked off by the
   background auto-sync scheduler rather than a click (see below) — closing the browser tab
   doesn't stop a sync in progress either, since it's a server-side job, not tied to the
-  request that started it.
+  request that started it. **If cards fail to sync**, a red banner appears under the button
+  listing what actually failed and why (the real PriceCharting error text, per card, not
+  just "something went wrong") — it stays up until dismissed or the next sync run, precisely
+  because a per-card failure here is the reason a card's price ladder stays incomplete (the
+  card detail page, `/collection/values`, and the portfolio's Raw/PSA 10 totals all read
+  from the same `PriceSnapshot` rows a sync writes, so if sync is failing, blank price data
+  everywhere else is the direct symptom, not a separate bug).
 - The **trend engine** (`src/lib/trends.ts`) looks at each card's merged price+sales history
   and fires `Alert` rows for:
   - **Trending up / down** — ≥10% move over the trailing 7 days

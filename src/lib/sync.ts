@@ -151,7 +151,9 @@ export async function syncCollection(): Promise<CardSyncResult[]> {
       completeSyncCard();
     }
   } finally {
-    finishSyncProgress();
+    finishSyncProgress(
+      results.filter((r): r is CardSyncResult & { error: string } => !!r.error).map((r) => ({ cardName: r.cardName, error: r.error }))
+    );
   }
 
   const allAlerts = results.flatMap((r) => r.alerts);
