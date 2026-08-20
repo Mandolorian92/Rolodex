@@ -8,15 +8,14 @@
  */
 
 /**
- * Cards imported from ManaBox (src/lib/manabox.ts) have no real PriceCharting product id —
- * they're keyed as `manabox:<manaboxId>` so Card.priceChartingId stays unique without one.
- * Anything checking whether a card actually has PriceCharting data to fetch should test
- * this first rather than assuming every Card row is PriceCharting-backed.
+ * Whether a card has no real PriceCharting product id — true for anything sourced from
+ * ManaBox (src/lib/manabox.ts) without a PriceCharting match, and for any future
+ * non-PriceCharting source (Scryfall/pokemontcg.io, scans, manual entry). Anything checking
+ * whether a card actually has PriceCharting data to fetch should test this first rather than
+ * assuming every Card row is PriceCharting-backed — see the note on the Card model.
  */
-export const MANABOX_ID_PREFIX = "manabox:";
-
-export function isManaboxOnlyCard(priceChartingId: string): boolean {
-  return priceChartingId.startsWith(MANABOX_ID_PREFIX);
+export function hasNoPriceChartingId(card: { priceChartingId: string | null }): boolean {
+  return card.priceChartingId === null;
 }
 
 export const CATEGORY_LABELS: Record<string, string> = {

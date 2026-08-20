@@ -9,15 +9,17 @@
  * Treat the first real import as the live test, the same way PriceCharting's collection
  * import needed a few rounds of fixes against real account data early in this project.
  *
- * Cards brought in this way have no real PriceCharting product id, so they're keyed as
- * `manabox:<id>` (see MANABOX_ID_PREFIX in cardMeta.ts) and rely on TCGPlayer
- * (src/lib/tcgplayerSync.ts) for pricing instead of PriceCharting.
+ * Cards brought in this way have no real PriceCharting product id, so they rely on TCGPlayer
+ * (src/lib/tcgplayerSync.ts) for pricing instead. For identity, a Magic card gets its real
+ * Scryfall id when the export includes one (stored on Card.scryfallId — a genuine external
+ * reference, not a synthesized key); anything else falls back to Card.manaboxId, built from
+ * ManaBox's own row id when present or a name+set+foil fingerprint when it isn't.
  */
 import Papa from "papaparse";
 import { prisma } from "@/lib/prisma";
 import { Condition } from "@/generated/prisma/client";
 import { parseConditionString } from "@/lib/grades";
-import { MANABOX_ID_PREFIX, detectLanguage } from "@/lib/cardMeta";
+import { detectLanguage } from "@/lib/cardMeta";
 
 const FIELD_ALIASES: Record<string, string[]> = {
   name: ["name", "card name"],
@@ -55,7 +57,8 @@ const GAME_TO_CATEGORY: Record<string, string> = {
 };
 
 export interface ManaboxParsedRow {
-  priceChartingId: string;
+  scryfallId: string | null;
+  manaboxId: string | null;
   name: string;
   consoleName: string | null;
   category: string;
@@ -99,10 +102,10 @@ export function parseManaboxCsv(csvText: string): ManaboxParseResult {
     const isFoil = /^(true|yes|1|foil)$/i.test(get("foil") ?? "");
     const displayName = isFoil ? `${name} (Foil)` : name;
 
-    const manaboxId = get("manaboxId");
-    const scryfallId = get("scryfallId");
-    const idSeed = manaboxId || scryfallId || `${name}|${setCode ?? setName ?? ""}|${isFoil}`;
-    const priceChartingId = `${MANABOX_ID_PREFIX}${idSeed}`;
+    const scryfallId = get("scryfallId") || null;
+    // Real ManaBox row id when present; otherwise a fingerprint from the row's own fields —
+    // either way this is what re-imports dedupe on when there's no Scryfall id to key off.
+    const manaboxId = scryfallId ? null : get("manaboxId") || `${name}|${setCode ?? setName ?? ""}|${isFoil}`;
 
     const quantityRaw = Number(get("quantity"));
     const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? Math.round(quantityRaw) : 1;
@@ -122,7 +125,8 @@ export function parseManaboxCsv(csvText: string): ManaboxParseResult {
     const purchasePriceCents = Number.isFinite(purchasePriceNum) ? Math.round(purchasePriceNum * 100) : null;
 
     rows.push({
-      priceChartingId,
+      scryfallId,
+      manaboxId,
       name: displayName,
       consoleName: setName,
       category,
@@ -161,14 +165,17 @@ export async function importManaboxCsv(csvText: string, userId: string): Promise
   };
 
   for (const row of rows) {
-    const existingCard = await prisma.card.findUnique({ where: { priceChartingId: row.priceChartingId } });
+    const existingCard = row.scryfallId
+      ? await prisma.card.findUnique({ where: { scryfallId: row.scryfallId } })
+      : await prisma.card.findUnique({ where: { manaboxId: row.manaboxId! } });
 
     let card = existingCard;
     let cardChanged = false;
     if (!card) {
       card = await prisma.card.create({
         data: {
-          priceChartingId: row.priceChartingId,
+          scryfallId: row.scryfallId,
+          manaboxId: row.manaboxId,
           name: row.name,
           consoleName: row.consoleName,
           category: row.category,

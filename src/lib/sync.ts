@@ -6,7 +6,7 @@ import { evaluateCardTrends } from "@/lib/trends";
 import { notifyNewAlerts, type AlertWithCard } from "@/lib/notify";
 import { checkForHigherValueVariants, shouldRecheckVariant } from "@/lib/variants";
 import { evaluateGradingOpportunity } from "@/lib/gradingRecs";
-import { deriveCategory, detectLanguage, isManaboxOnlyCard } from "@/lib/cardMeta";
+import { deriveCategory, detectLanguage, hasNoPriceChartingId } from "@/lib/cardMeta";
 import { startSyncProgress, reportSyncCard, completeSyncCard, finishSyncProgress } from "@/lib/syncProgress";
 import { syncTcgplayerPrice } from "@/lib/tcgplayerSync";
 
@@ -57,9 +57,9 @@ export async function syncCard(cardId: string, opts?: { allowVariantCheck?: bool
     tcgplayerSynced: false,
   };
 
-  const hasPriceChartingId = !isManaboxOnlyCard(card.priceChartingId);
+  const hasPriceChartingId = !hasNoPriceChartingId(card);
 
-  if (hasPriceChartingId) {
+  if (hasPriceChartingId && card.priceChartingId) {
     try {
       const product = await getProduct(card.priceChartingId);
       const prices = extractPriceFields(product);

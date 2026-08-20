@@ -93,10 +93,26 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
-// A single card/product as known by PriceCharting's catalog.
+// A single card, identified independent of any one vendor's catalog. `priceChartingId` was
+// originally the primary key in spirit (required + unique); it's now one optional external
+// reference among several, so a card can enter the catalog from PriceCharting, a ManaBox
+// export, a free TCG catalog (Scryfall/pokemontcg.io — not wired up yet), a scan, or a user
+// just typing it in, without any one of those being required. Pricing still comes from
+// wherever it comes from (PriceCharting/eBay/TCGPlayer/manual) independent of which external
+// ref(s), if any, a card happens to have.
 model Card {
   id               String    @id @default(cuid())
-  priceChartingId  String    @unique @map("pricecharting_id")
+  priceChartingId  String?   @unique @map("pricecharting_id")
+  // Magic's canonical id (scryfall.com) — ManaBox exports already carry this for Magic cards
+  // (see src/lib/manabox.ts), so it costs nothing extra to store; a real Scryfall API search
+  // integration for the add-card flow is a separate follow-up, not built yet.
+  scryfallId       String?   @unique @map("scryfall_id")
+  // Pokémon's canonical id (pokemontcg.io) — no integration populates this yet; reserved for
+  // the same follow-up as scryfallId above.
+  pokemonTcgId     String?   @unique @map("pokemontcg_id")
+  // ManaBox's own row id, when a card has neither a real PriceCharting id nor a Scryfall id
+  // (e.g. non-Magic rows in an export) — the fallback identity so re-imports still dedupe.
+  manaboxId        String?   @unique @map("manabox_id")
   name             String
   consoleName      String?   @map("console_name") // e.g. "Pokemon Base Set", "Magic: Alpha"
   category         String? // e.g. "pokemon-card", "sports-card", "magic-card" — see src/lib/cardMeta.ts

@@ -60,6 +60,7 @@ async function recordSale(card: Card, sale: SaleInput): Promise<boolean> {
 
 /** Pull recently sold transactions for this card from PriceCharting's own marketplace. */
 export async function syncPriceChartingSoldOffers(card: Card): Promise<number> {
+  if (!card.priceChartingId) return 0;
   const offers = await getSoldOffers(card.priceChartingId);
   let recorded = 0;
 

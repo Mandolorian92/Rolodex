@@ -298,9 +298,11 @@ doesn't carry sports cards):
 - **ManaBox** (`src/lib/manabox.ts`, "Import from ManaBox (CSV)" on `/collection`) — ManaBox
   is a mobile scanning/cataloging app with no public API, so a CSV export
   (collection → export → CSV in the app) is the only integration surface available. Cards
-  brought in this way have no PriceCharting product id — they're keyed as
-  `manabox:<manaboxId>` — so they rely entirely on TCGPlayer (above) for pricing rather than
-  PriceCharting. Same caveat as TCGPlayer: the expected CSV column names
+  brought in this way have no PriceCharting product id, so they rely entirely on TCGPlayer
+  (above) for pricing rather than PriceCharting; for identity, a Magic card keeps its real
+  Scryfall id (`Card.scryfallId`) straight from the export, and anything else falls back to
+  `Card.manaboxId` — see [Card identity](#card-identity) below. Same caveat as TCGPlayer: the
+  expected CSV column names
   (`FIELD_ALIASES` in `manabox.ts`) come from the commonly-documented ManaBox export format,
   not a real exported file, since this environment has no way to produce one. Import is
   delta-aware like the PriceCharting importer — safe to re-run after only a few cards
@@ -405,6 +407,25 @@ set up.
   `NOT NULL` column with a meaningful value on its own. Pre-auth rows just sit there
   unowned — nothing claims them automatically. A follow-up migration to make `userId`
   required (once there's a claim flow for that old data) hasn't been built yet.
+
+## Card identity
+
+`Card.priceChartingId` used to be the card's identity in spirit — required, unique, every
+lookup keyed on it. It's now one optional external reference among several
+(`scryfallId`, `pokemonTcgId`, `manaboxId`), so a card can enter the catalog from
+PriceCharting, a ManaBox export, a future free TCG catalog, a scan, or a user just typing it
+in, without needing to be PriceCharting-backed to exist. See the comment on the `Card` model
+in `prisma/schema.prisma`.
+
+This is deliberately half-built right now: the columns exist and ManaBox populates
+`scryfallId`/`manaboxId` on import, but nothing yet *searches* Scryfall or pokemontcg.io the
+way `/api/cards/search` searches PriceCharting's catalog — the "Add a card" flow is still
+PriceCharting-only. Swapping in those free, redistribution-friendly catalogs for Magic/
+Pokémon identification (leaving PriceCharting/eBay/TCGPlayer for pricing, and sports cards
+without a catalog alternative) is the next step, not done yet.
+
+Pricing was never tied to `priceChartingId` in the first place — `PriceSnapshot`/
+`MarketSale` key off `cardId`, so this change doesn't touch how prices sync at all.
 
 ## Data model
 
