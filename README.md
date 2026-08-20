@@ -38,6 +38,12 @@ restocks. See [Stock watch](#stock-watch) below.
     `/collection`) — same delta-aware behavior, for a collection exported from the ManaBox
     app instead. See [TCGPlayer and ManaBox](#tcgplayer-and-manabox) below.
   - **Manual add** (`/collection/add`) — search the catalog and add a card by hand.
+- **Download spreadsheet** (`src/lib/collectionExport.ts`, `GET /api/collection/export`,
+  the button on `/collection`) — a CSV of the whole collection (name, set, category,
+  language, condition, quantity, latest price, purchase price, unrealized gain $/%, grading
+  recommendation, date added), built from the same data every other view already computes.
+  Opens directly in Excel/Sheets/Numbers; card names containing commas or quotes are quoted
+  correctly per the CSV spec.
 - A **sync** (`src/lib/sync.ts`, exposed as `POST /api/sync` and `npm run sync`) does three
   things per card, in order:
   1. Pulls PriceCharting's guide price for every grade/condition field that card's category

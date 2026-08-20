@@ -138,6 +138,14 @@ export default async function CollectionPage({
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-zinc-100">Your collection</h1>
         <div className="flex items-center gap-2">
+          {/* Plain <a>, not <Link> — this triggers a file download (Content-Disposition), not a page navigation. */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a
+            href="/api/collection/export"
+            className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-900"
+          >
+            Download spreadsheet
+          </a>
           <Link
             href="/collection/add"
             className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"

@@ -3,20 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { formatCents, formatPriceType } from "@/lib/format";
 import { latestPriceByType } from "@/lib/cardStats";
 import { computeGradingRecommendation } from "@/lib/gradingRecs";
-import { CONDITION_TO_PRICE_TYPE } from "@/lib/grades";
+import { CONDITION_TO_PRICE_TYPE, RAW_CONDITIONS } from "@/lib/grades";
 import PriceHistoryChart from "@/components/PriceHistoryChart";
 import TrendBadge from "@/components/TrendBadge";
 import CheckVariantsButton from "@/components/CheckVariantsButton";
 import CardMetaEditor from "@/components/CardMetaEditor";
-
-const RAW_CONDITIONS = new Set([
-  "UNGRADED",
-  "NEAR_MINT",
-  "LIGHTLY_PLAYED",
-  "MODERATELY_PLAYED",
-  "HEAVILY_PLAYED",
-  "DAMAGED",
-]);
 
 export const dynamic = "force-dynamic";
 

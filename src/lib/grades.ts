@@ -23,6 +23,16 @@ export const CONDITION_TO_PRICE_TYPE: Record<Condition, string> = {
   [Condition.SGC_10]: "condition-18",
 };
 
+/** Raw/ungraded conditions — grading recs, price-ladder "owned" checks, etc all key off this. */
+export const RAW_CONDITIONS: ReadonlySet<Condition> = new Set([
+  Condition.UNGRADED,
+  Condition.NEAR_MINT,
+  Condition.LIGHTLY_PLAYED,
+  Condition.MODERATELY_PLAYED,
+  Condition.HEAVILY_PLAYED,
+  Condition.DAMAGED,
+]);
+
 /** Matches a bare grade number like "9" in "PSA 9" or "Grade 9", but not the "9" in "9.5". */
 function hasGradeNumber(s: string, n: number): boolean {
   return new RegExp(`\\b${n}\\b(?!\\.)`).test(s);

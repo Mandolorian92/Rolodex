@@ -3,23 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { Condition, type Card, type PriceSnapshot } from "@/generated/prisma/client";
 import { latestPriceByType, PRICE_TYPE_LADDER } from "@/lib/cardStats";
 import { computeGradingRecommendation } from "@/lib/gradingRecs";
+import { RAW_CONDITIONS } from "@/lib/grades";
 import { buildCategoryOptions, buildLanguageOptions, matchesCardMetaFilter } from "@/lib/cardMeta";
 import { formatCents, formatPriceType, formatPct } from "@/lib/format";
 import CollectionFilters from "@/components/CollectionFilters";
 import ValuesViewControls from "@/components/ValuesViewControls";
 
 export const dynamic = "force-dynamic";
-
-// Same raw/graded split as the card detail page's "Price by grade" panel — a grading
-// recommendation only applies when what's owned is a raw (ungraded/played) copy.
-const RAW_CONDITIONS = new Set<Condition>([
-  Condition.UNGRADED,
-  Condition.NEAR_MINT,
-  Condition.LIGHTLY_PLAYED,
-  Condition.MODERATELY_PLAYED,
-  Condition.HEAVILY_PLAYED,
-  Condition.DAMAGED,
-]);
 
 // The specific columns asked for: ungraded plus PSA 7 through 10. (PriceCharting's PSA-10
 // field is "manual-only" — see CARD_PRICE_TYPE_LABELS in pricecharting.ts.)
