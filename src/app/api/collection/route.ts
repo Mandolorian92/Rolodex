@@ -25,7 +25,11 @@ export async function GET() {
 }
 
 const AddToCollectionSchema = z.object({
-  priceChartingId: z.string().min(1),
+  source: z.enum(["pricecharting", "scryfall", "pokemontcg"]).default("pricecharting"),
+  // Kept as an accepted alias for priceChartingId so any existing caller (or muscle-memory
+  // API usage) that only knows the old shape still works — externalId is preferred.
+  externalId: z.string().min(1).optional(),
+  priceChartingId: z.string().min(1).optional(),
   name: z.string().min(1),
   consoleName: z.string().nullable().optional(),
   category: z.string().nullable().optional(),
@@ -36,6 +40,39 @@ const AddToCollectionSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
+/**
+ * Scryfall results are unambiguously Magic and pokemontcg.io results are unambiguously
+ * Pokémon — no heuristic needed, unlike PriceCharting's console-name-based guess (see
+ * deriveCategory in cardMeta.ts) which the "pricecharting" branch below still falls back to.
+ */
+function findOrCreateCard(
+  source: "pricecharting" | "scryfall" | "pokemontcg",
+  externalId: string,
+  data: { name: string; consoleName: string | null; category: string | null; language: string | null; imageUrl: string | null }
+) {
+  switch (source) {
+    case "scryfall":
+      return prisma.card.upsert({
+        where: { scryfallId: externalId },
+        create: { scryfallId: externalId, ...data, category: "magic-card" },
+        update: { ...data, category: "magic-card" },
+      });
+    case "pokemontcg":
+      return prisma.card.upsert({
+        where: { pokemonTcgId: externalId },
+        create: { pokemonTcgId: externalId, ...data, category: "pokemon-card" },
+        update: { ...data, category: "pokemon-card" },
+      });
+    case "pricecharting":
+    default:
+      return prisma.card.upsert({
+        where: { priceChartingId: externalId },
+        create: { priceChartingId: externalId, ...data },
+        update: data,
+      });
+  }
+}
+
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
@@ -45,17 +82,22 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { priceChartingId, name, consoleName, category, imageUrl, quantity, condition, purchasePrice, notes } =
-    parsed.data;
+  const { source, name, consoleName, category, imageUrl, quantity, condition, purchasePrice, notes } = parsed.data;
+  const externalId = parsed.data.externalId ?? parsed.data.priceChartingId;
+  if (!externalId) {
+    return NextResponse.json({ error: "externalId (or priceChartingId) is required" }, { status: 400 });
+  }
   // The add-card search UI doesn't collect category, so derive it (and language) the same
   // way import does — an explicit category from the caller still wins if one's given.
   const resolvedCategory = category ?? deriveCategory(consoleName);
   const language = detectLanguage(name, consoleName);
 
-  const card = await prisma.card.upsert({
-    where: { priceChartingId },
-    create: { priceChartingId, name, consoleName, category: resolvedCategory, language, imageUrl },
-    update: { name, consoleName, category: resolvedCategory, language, imageUrl },
+  const card = await findOrCreateCard(source, externalId, {
+    name,
+    consoleName: consoleName ?? null,
+    category: resolvedCategory,
+    language,
+    imageUrl: imageUrl ?? null,
   });
 
   const existingItem = await prisma.collectionItem.findFirst({ where: { userId, cardId: card.id, condition } });

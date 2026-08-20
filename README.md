@@ -250,6 +250,7 @@ Open http://localhost:3000 — you'll land on `/sign-in`. See [Accounts](#accoun
 | `PRICECHARTING_SELLER_ID` | no | Your PriceCharting user id, for the collection importer — the part of `pricecharting.com/offers?...&seller=THIS_PART&status=collection` after `seller=`. Can also be entered directly in the import form instead. |
 | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` | no | eBay developer app credentials, for pulling sold comps |
 | `TCGPLAYER_CLIENT_ID` / `TCGPLAYER_CLIENT_SECRET` | no | TCGPlayer developer credentials — adds TCGPlayer's own Market Price as a second real-market signal for Magic/Pokémon/Yu-Gi-Oh cards. Also what prices any card imported via ManaBox, below |
+| `POKEMONTCG_API_KEY` | no | Raises the rate limit on pokemontcg.io catalog search (Pokémon results in "Add a card"). Search works without it. Scryfall (Magic) needs no key at all — see [Catalog sources](#catalog-sources) |
 | `RESEND_API_KEY` | no | Enables email notifications — [get a free key](https://resend.com) |
 | `ALERT_EMAIL_TO` | no | Where alert emails get sent. Required (along with `RESEND_API_KEY`) to turn notifications on |
 | `ALERT_EMAIL_FROM` | no | Sender address. Defaults to Resend's shared test sender, which works without verifying your own domain |
@@ -417,15 +418,53 @@ PriceCharting, a ManaBox export, a future free TCG catalog, a scan, or a user ju
 in, without needing to be PriceCharting-backed to exist. See the comment on the `Card` model
 in `prisma/schema.prisma`.
 
-This is deliberately half-built right now: the columns exist and ManaBox populates
-`scryfallId`/`manaboxId` on import, but nothing yet *searches* Scryfall or pokemontcg.io the
-way `/api/cards/search` searches PriceCharting's catalog — the "Add a card" flow is still
-PriceCharting-only. Swapping in those free, redistribution-friendly catalogs for Magic/
-Pokémon identification (leaving PriceCharting/eBay/TCGPlayer for pricing, and sports cards
-without a catalog alternative) is the next step, not done yet.
+`/api/cards/search` (used by "Add a card" on `/collection/add`) now queries PriceCharting,
+Scryfall, and pokemontcg.io in parallel — see [Catalog sources](#catalog-sources) below — so
+a Magic or Pokémon card can be found and added without PriceCharting ever being involved.
+Sports and Yu-Gi-Oh cards still come from PriceCharting's catalog alone; no open equivalent
+exists for either yet.
 
 Pricing was never tied to `priceChartingId` in the first place — `PriceSnapshot`/
-`MarketSale` key off `cardId`, so this change doesn't touch how prices sync at all.
+`MarketSale` key off `cardId`, so this change doesn't touch how prices sync at all. A card
+with no `priceChartingId` (Scryfall/pokemontcg.io/ManaBox-sourced) simply skips the
+PriceCharting-specific sync steps and gets its pricing from eBay/TCGPlayer instead — both
+search by name, not any PriceCharting id, so neither ever needed one (see `syncCard()` in
+`src/lib/sync.ts`).
+
+### Catalog sources
+
+Two free, open catalogs are wired into card search/identification for the categories they
+cover — a different licensing posture from PriceCharting, whose terms restrict Price Data
+(and, by extension, catalog data pulled via its API) from being shown to anyone but the
+subscriber without express written permission:
+
+- **Scryfall** (`src/lib/scryfall.ts`) — Magic: The Gathering. Fully open, no API key, no
+  rate-limit tier to worry about for occasional searches. Its
+  [terms](https://scryfall.com/docs/terms) explicitly exist to support exactly this kind of
+  use — it's provided under Wizards of the Coast's Fan Content Policy specifically so people
+  can build Magic software/tools with it, free of charge, no redistribution restriction like
+  PriceCharting's.
+- **pokemontcg.io** (`src/lib/pokemontcg.ts`) — Pokémon. Works without a key at a lower rate
+  limit; set `POKEMONTCG_API_KEY` (free signup) for a higher one. Its
+  [terms](https://dev.pokemontcg.io/terms) require attribution and reserve the right to
+  suspend access at any time — **its commercial-use terms haven't been independently
+  confirmed** the way Scryfall's have; read the full terms before this app takes paying
+  users, the same open item already flagged for PriceCharting/eBay/TCGPlayer.
+
+Both are catalog/identity only — name, set, image. Neither's own bundled pricing is used
+(Scryfall's `prices` field and pokemontcg.io's `tcgplayer.prices` are both themselves sourced
+from TCGPlayer, so pulling them here would just be a slower, redundant path to a number
+`src/lib/tcgplayerSync.ts` already gets directly). A card added through either source is
+created with `category` set unambiguously (`magic-card`/`pokemon-card`) rather than guessed
+via `deriveCategory()`, since there's no ambiguity about which catalog it came from.
+
+Like TCGPlayer, neither has been exercised against its real API from this project's dev
+environment (network access to `api.scryfall.com`/`api.pokemontcg.io` is blocked here) — the
+request/response shapes are built from each API's public docs. The search endpoint's
+handling of a source being unreachable *has* been verified though: `/api/cards/search` runs
+all three in parallel via `Promise.allSettled`, so one failing (or simply not being
+reachable) never blocks the others, and only surfaces an error to the user when
+PriceCharting specifically fails and nothing came back from any source.
 
 ## Data model
 

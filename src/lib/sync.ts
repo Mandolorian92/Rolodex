@@ -33,16 +33,18 @@ export interface CardSyncResult {
 }
 
 /**
- * Refresh a single card's data: PriceCharting's guide price (per condition) and real recent
- * sold transactions (its own marketplace, and eBay if configured), plus TCGPlayer's Market
- * Price for Magic/Pokemon/Yu-Gi-Oh cards if configured — all three feed the same
- * PriceSnapshot timeline, so the trend engine treats any of them exactly like a guide-price
- * move, at its real capture date.
+ * Refresh a single card's data: PriceCharting's guide price and its own sold offers (only
+ * for a card with a real PriceCharting id), plus eBay sold comps and TCGPlayer's Market
+ * Price (Magic/Pokemon/Yu-Gi-Oh) if configured — none of which need one, since both search
+ * by name/console rather than any PriceCharting-specific id. All feed the same PriceSnapshot
+ * timeline, so the trend engine treats any of them exactly like a guide-price move, at its
+ * real capture date.
  *
- * A card with no real PriceCharting id (imported via ManaBox — see cardMeta.ts) skips the
- * PriceCharting steps entirely rather than erroring; a PriceCharting failure on a card that
- * does have an id is recorded but no longer aborts the rest of the sync, since TCGPlayer is
- * a genuinely independent source that shouldn't depend on PriceCharting succeeding.
+ * A card with no real PriceCharting id (ManaBox, or added via the free Scryfall/pokemontcg.io
+ * catalogs — see cardMeta.ts / scryfall.ts / pokemontcg.ts) skips only the PriceCharting-
+ * specific steps rather than erroring; a PriceCharting failure on a card that does have an
+ * id is recorded but no longer aborts the rest of the sync, since eBay/TCGPlayer are
+ * genuinely independent sources that shouldn't depend on PriceCharting succeeding.
  */
 export async function syncCard(cardId: string, opts?: { allowVariantCheck?: boolean }): Promise<CardSyncResult> {
   let card = await prisma.card.findUniqueOrThrow({ where: { id: cardId } });
@@ -95,12 +97,15 @@ export async function syncCard(cardId: string, opts?: { allowVariantCheck?: bool
     } catch (err) {
       console.warn(`[sync] PriceCharting sold offers failed for card ${card.id}:`, err);
     }
+  }
 
-    try {
-      result.salesRecorded += await syncEbaySoldComps(card);
-    } catch (err) {
-      console.warn(`[sync] eBay sold comps failed for card ${card.id}:`, err);
-    }
+  // eBay search is by name/console, not a PriceCharting id, so — unlike the block above —
+  // this runs for every card regardless of catalog source (PriceCharting, Scryfall,
+  // pokemontcg.io, ManaBox), same as TCGPlayer below.
+  try {
+    result.salesRecorded += await syncEbaySoldComps(card);
+  } catch (err) {
+    console.warn(`[sync] eBay sold comps failed for card ${card.id}:`, err);
   }
 
   try {

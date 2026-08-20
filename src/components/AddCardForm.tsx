@@ -3,13 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCents, formatPriceType } from "@/lib/format";
+import type { CardSearchResult, CardSearchSource } from "@/app/api/cards/search/route";
 
-interface SearchResult {
-  priceChartingId: string;
-  name: string;
-  consoleName: string | null;
-  prices: Record<string, number>;
-}
+const SOURCE_LABELS: Record<CardSearchSource, string> = {
+  pricecharting: "PriceCharting",
+  scryfall: "Scryfall",
+  pokemontcg: "Pokémon TCG",
+};
 
 const CONDITIONS = [
   "UNGRADED",
@@ -30,10 +30,10 @@ const CONDITIONS = [
 export default function AddCardForm() {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[] | null>(null);
+  const [results, setResults] = useState<CardSearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<SearchResult | null>(null);
+  const [selected, setSelected] = useState<CardSearchResult | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [condition, setCondition] = useState<(typeof CONDITIONS)[number]>("NEAR_MINT");
   const [purchasePrice, setPurchasePrice] = useState("");
@@ -67,9 +67,11 @@ export default function AddCardForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          priceChartingId: selected.priceChartingId,
+          source: selected.source,
+          externalId: selected.externalId,
           name: selected.name,
           consoleName: selected.consoleName,
+          imageUrl: selected.imageUrl,
           quantity,
           condition,
           purchasePrice: purchasePrice ? Math.round(Number(purchasePrice) * 100) : null,
@@ -92,7 +94,7 @@ export default function AddCardForm() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search the PriceCharting catalog, e.g. 'Charizard Base Set'"
+          placeholder="Search by name, e.g. 'Charizard Base Set' — checks PriceCharting, Scryfall, and Pokémon TCG"
           className="flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
         />
         <button
@@ -111,21 +113,25 @@ export default function AddCardForm() {
           {results.length === 0 && <p className="p-4 text-sm text-zinc-500">No results.</p>}
           {results.map((r) => (
             <button
-              key={r.priceChartingId}
+              key={`${r.source}:${r.externalId}`}
               onClick={() => setSelected(r)}
               className={`flex w-full items-center justify-between px-4 py-3 text-left text-sm hover:bg-zinc-900 ${
-                selected?.priceChartingId === r.priceChartingId ? "bg-zinc-900" : ""
+                selected?.source === r.source && selected?.externalId === r.externalId ? "bg-zinc-900" : ""
               }`}
             >
               <span>
                 <span className="font-medium text-zinc-100">{r.name}</span>
                 {r.consoleName && <span className="ml-2 text-xs text-zinc-500">{r.consoleName}</span>}
+                <span className="ml-2 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-500">
+                  {SOURCE_LABELS[r.source]}
+                </span>
               </span>
               <span className="font-mono text-xs text-zinc-400">
-                {Object.entries(r.prices)
-                  .slice(0, 2)
-                  .map(([type, cents]) => `${formatPriceType(type)} ${formatCents(cents)}`)
-                  .join(" · ")}
+                {r.prices &&
+                  Object.entries(r.prices)
+                    .slice(0, 2)
+                    .map(([type, cents]) => `${formatPriceType(type)} ${formatCents(cents)}`)
+                    .join(" · ")}
               </span>
             </button>
           ))}
