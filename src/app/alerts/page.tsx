@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/session";
 import TrendBadge from "@/components/TrendBadge";
 import AcknowledgeAlertButton from "@/components/AcknowledgeAlertButton";
 import NotifyStatus from "@/components/NotifyStatus";
@@ -8,7 +9,9 @@ import { isNotifyConfigured } from "@/lib/notify";
 export const dynamic = "force-dynamic";
 
 export default async function AlertsPage() {
+  const userId = await requireUserId();
   const alerts = await prisma.alert.findMany({
+    where: { userId },
     include: { card: true },
     orderBy: { createdAt: "desc" },
     take: 100,

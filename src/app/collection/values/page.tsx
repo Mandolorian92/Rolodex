@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/session";
 import { Condition, type Card, type PriceSnapshot } from "@/generated/prisma/client";
 import { latestPriceByType, PRICE_TYPE_LADDER } from "@/lib/cardStats";
 import { computeGradingRecommendation } from "@/lib/gradingRecs";
@@ -35,6 +36,7 @@ export default async function CollectionValuesPage({
 }: {
   searchParams: Promise<{ view?: string; tier?: string; category?: string; language?: string }>;
 }) {
+  const userId = await requireUserId();
   const params = await searchParams;
   const view: ViewMode = isViewMode(params.view) ? params.view : "list";
   const tier = params.tier && PRICE_TYPE_LADDER.includes(params.tier) ? params.tier : "loose";
@@ -42,6 +44,7 @@ export default async function CollectionValuesPage({
   const language = params.language ?? "all";
 
   const items = await prisma.collectionItem.findMany({
+    where: { userId },
     include: { card: { include: { priceSnapshots: { orderBy: { capturedAt: "asc" } } } } },
   });
 

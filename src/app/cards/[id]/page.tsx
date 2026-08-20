@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/session";
 import { formatCents, formatPriceType } from "@/lib/format";
 import { latestPriceByType } from "@/lib/cardStats";
 import { computeGradingRecommendation } from "@/lib/gradingRecs";
@@ -17,6 +18,7 @@ const SALE_SOURCE_LABEL: Record<string, string> = {
 };
 
 export default async function CardDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const userId = await requireUserId();
   const { id } = await params;
 
   const card = await prisma.card.findUnique({
@@ -24,8 +26,8 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
     include: {
       priceSnapshots: { orderBy: { capturedAt: "asc" } },
       marketSales: { orderBy: { soldAt: "desc" }, take: 15 },
-      alerts: { orderBy: { createdAt: "desc" }, take: 10 },
-      collectionItems: true,
+      alerts: { where: { userId }, orderBy: { createdAt: "desc" }, take: 10 },
+      collectionItems: { where: { userId } },
     },
   });
 

@@ -34,7 +34,7 @@ function getSellerId(explicit?: string): string {
  * Each offer already includes a current `value`, so we seed an initial PriceSnapshot per
  * card without needing a separate (rate-limited) /api/product call per card.
  */
-export async function importPriceChartingCollection(sellerId?: string): Promise<ImportSummary> {
+export async function importPriceChartingCollection(userId: string, sellerId?: string): Promise<ImportSummary> {
   const seller = getSellerId(sellerId);
   const offers = await getAllOffers({ seller, status: "collection" });
 
@@ -49,7 +49,7 @@ export async function importPriceChartingCollection(sellerId?: string): Promise<
 
   for (const offer of offers) {
     try {
-      await importOffer(offer, summary);
+      await importOffer(offer, summary, userId);
     } catch (err) {
       summary.skipped.push({
         offer: offer["product-name"] ?? String(offer.id),
@@ -61,7 +61,7 @@ export async function importPriceChartingCollection(sellerId?: string): Promise<
   return summary;
 }
 
-async function importOffer(offer: PriceChartingOffer, summary: ImportSummary) {
+async function importOffer(offer: PriceChartingOffer, summary: ImportSummary, userId: string) {
   if (!offer.id || !offer["product-name"]) {
     summary.skipped.push({ offer: offer["offer-id"] ?? "unknown", reason: "Missing product id/name" });
     return;
@@ -109,13 +109,13 @@ async function importOffer(offer: PriceChartingOffer, summary: ImportSummary) {
     }
   }
 
-  const existingItem = await prisma.collectionItem.findUnique({
-    where: { cardId_condition: { cardId: card.id, condition } },
+  const existingItem = await prisma.collectionItem.findFirst({
+    where: { userId, cardId: card.id, condition },
   });
 
   let itemChanged = false;
   if (!existingItem) {
-    await prisma.collectionItem.create({ data: { cardId: card.id, quantity, condition } });
+    await prisma.collectionItem.create({ data: { userId, cardId: card.id, quantity, condition } });
     itemChanged = true;
   } else if (existingItem.quantity !== quantity) {
     await prisma.collectionItem.update({ where: { id: existingItem.id }, data: { quantity } });

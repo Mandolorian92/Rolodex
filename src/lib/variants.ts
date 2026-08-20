@@ -161,6 +161,16 @@ export async function checkForHigherValueVariants(card: Card): Promise<VariantCh
   return { higherValueVariants, alert };
 }
 
+/** Every user who owns at least one copy of this card — see the identical helper in trends.ts. */
+async function ownerUserIds(cardId: string): Promise<Array<string | null>> {
+  const owners = await prisma.collectionItem.findMany({
+    where: { cardId },
+    select: { userId: true },
+    distinct: ["userId"],
+  });
+  return owners.map((o) => o.userId);
+}
+
 async function recordVariantAlert(
   card: Card,
   priceType: string,
@@ -168,28 +178,35 @@ async function recordVariantAlert(
   matches: HigherValueVariant[]
 ): Promise<Alert | null> {
   const cooldownCutoff = new Date(Date.now() - VARIANT_ALERT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
-  const existing = await prisma.alert.findFirst({
-    where: {
-      cardId: card.id,
-      type: AlertType.VARIANT_MISMATCH,
-      priceType,
-      createdAt: { gte: cooldownCutoff },
-    },
-  });
-  if (existing) return null;
-
   const best = matches.reduce((max, m) => (m.deltaPct > max.deltaPct ? m : max), matches[0]);
+  const message = `Double check the variant — "${best.productName}" (same card, different print) is worth ${formatCents(best.price)}, ${formatPct(best.deltaPct)} more than what's on file. You may have scanned or labeled the wrong variant.`;
 
-  return prisma.alert.create({
-    data: {
-      cardId: card.id,
-      type: AlertType.VARIANT_MISMATCH,
-      priceType,
-      message: `Double check the variant — "${best.productName}" (same card, different print) is worth ${formatCents(best.price)}, ${formatPct(best.deltaPct)} more than what's on file. You may have scanned or labeled the wrong variant.`,
-      changePct: best.deltaPct,
-      fromPrice: ownedPrice,
-      toPrice: best.price,
-      windowDays: 0,
-    },
-  });
+  let lastCreated: Alert | null = null;
+  for (const ownerId of await ownerUserIds(card.id)) {
+    const existing = await prisma.alert.findFirst({
+      where: {
+        userId: ownerId,
+        cardId: card.id,
+        type: AlertType.VARIANT_MISMATCH,
+        priceType,
+        createdAt: { gte: cooldownCutoff },
+      },
+    });
+    if (existing) continue;
+
+    lastCreated = await prisma.alert.create({
+      data: {
+        userId: ownerId,
+        cardId: card.id,
+        type: AlertType.VARIANT_MISMATCH,
+        priceType,
+        message,
+        changePct: best.deltaPct,
+        fromPrice: ownedPrice,
+        toPrice: best.price,
+        windowDays: 0,
+      },
+    });
+  }
+  return lastCreated;
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/session";
 import { pickPrimarySeries } from "@/lib/cardStats";
 import { computeGradingRecommendation } from "@/lib/gradingRecs";
 import { buildCategoryOptions, buildLanguageOptions, matchesCardMetaFilter, CATEGORY_LABELS } from "@/lib/cardMeta";
@@ -85,6 +86,7 @@ export default async function CollectionPage({
 }: {
   searchParams: Promise<{ sort?: string; dir?: string; category?: string; language?: string }>;
 }) {
+  const userId = await requireUserId();
   const params = await searchParams;
   const sort: SortKey = isSortKey(params.sort) ? params.sort : "dateAdded";
   const dir: SortDir = params.dir === "asc" || params.dir === "desc" ? params.dir : DEFAULT_DIR[sort];
@@ -92,6 +94,7 @@ export default async function CollectionPage({
   const language = params.language ?? "all";
 
   const items = await prisma.collectionItem.findMany({
+    where: { userId },
     include: {
       card: { include: { priceSnapshots: { orderBy: { capturedAt: "asc" } } } },
     },

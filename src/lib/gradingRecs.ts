@@ -115,7 +115,8 @@ const ALERT_COOLDOWN_DAYS = 14;
  */
 export async function evaluateGradingOpportunity(
   cardId: string,
-  ownedCondition: Condition
+  ownedCondition: Condition,
+  userId: string | null
 ): Promise<Alert | null> {
   const snapshots = await prisma.priceSnapshot.findMany({
     where: { cardId },
@@ -128,6 +129,7 @@ export async function evaluateGradingOpportunity(
   const cooldownCutoff = new Date(Date.now() - ALERT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
   const existing = await prisma.alert.findFirst({
     where: {
+      userId,
       cardId,
       type: AlertType.GRADING_OPPORTUNITY,
       priceType: "loose",
@@ -138,6 +140,7 @@ export async function evaluateGradingOpportunity(
 
   return prisma.alert.create({
     data: {
+      userId,
       cardId,
       type: AlertType.GRADING_OPPORTUNITY,
       priceType: "loose",

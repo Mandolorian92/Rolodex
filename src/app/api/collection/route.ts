@@ -4,9 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { Condition } from "@/generated/prisma/client";
 import { syncCard } from "@/lib/sync";
 import { deriveCategory, detectLanguage } from "@/lib/cardMeta";
+import { getSessionUserId } from "@/lib/session";
 
 export async function GET() {
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
   const items = await prisma.collectionItem.findMany({
+    where: { userId },
     include: {
       card: {
         include: {
@@ -32,6 +37,9 @@ const AddToCollectionSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
   const body = await req.json();
   const parsed = AddToCollectionSchema.safeParse(body);
   if (!parsed.success) {
@@ -50,12 +58,17 @@ export async function POST(req: NextRequest) {
     update: { name, consoleName, category: resolvedCategory, language, imageUrl },
   });
 
-  const item = await prisma.collectionItem.upsert({
-    where: { cardId_condition: { cardId: card.id, condition } },
-    create: { cardId: card.id, quantity, condition, purchasePrice, notes },
-    update: { quantity: { increment: quantity } },
-    include: { card: true },
-  });
+  const existingItem = await prisma.collectionItem.findFirst({ where: { userId, cardId: card.id, condition } });
+  const item = existingItem
+    ? await prisma.collectionItem.update({
+        where: { id: existingItem.id },
+        data: { quantity: { increment: quantity } },
+        include: { card: true },
+      })
+    : await prisma.collectionItem.create({
+        data: { userId, cardId: card.id, quantity, condition, purchasePrice, notes },
+        include: { card: true },
+      });
 
   // Best-effort initial price pull (and, since this card is new, a variant-mismatch check —
   // see shouldRecheckVariant() in variants.ts) so the card shows real data immediately,

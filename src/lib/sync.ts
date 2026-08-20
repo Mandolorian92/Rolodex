@@ -131,7 +131,7 @@ export async function syncCard(cardId: string, opts?: { allowVariantCheck?: bool
   try {
     const collectionItems = await prisma.collectionItem.findMany({ where: { cardId: card.id } });
     for (const item of collectionItems) {
-      const gradingAlert = await evaluateGradingOpportunity(card.id, item.condition);
+      const gradingAlert = await evaluateGradingOpportunity(card.id, item.condition, item.userId);
       if (gradingAlert) result.alerts.push({ ...gradingAlert, card });
     }
   } catch (err) {

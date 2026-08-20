@@ -18,6 +18,81 @@ datasource db {
   provider = "postgresql"
 }
 
+// --- Accounts: the multi-tenant foundation. Card/PriceSnapshot/MarketSale stay
+// deliberately unscoped by user — they're a shared catalog, not personal data, so two
+// users who both own a Base Set Charizard share its price history instead of each
+// triggering their own PriceCharting/TCGPlayer sync. Only ownership (CollectionItem,
+// WatchTarget) and personal signals (Alert) are scoped to a user.
+//
+// userId is nullable for now, deliberately: this schema shipped after real single-user
+// data already existed (locally and for early users), and Postgres can't backfill a
+// NOT NULL column with a meaningful value on its own. The migration path is: (1) this
+// migration, purely additive; (2) each existing user claims their pre-auth data via a
+// one-time backfill once they have an account; (3) a follow-up migration tightens these
+// to required. Don't build new features that assume userId is always present until that
+// follow-up lands — see README.
+
+// Auth.js (next-auth v5) Prisma adapter schema — standard shape, do not rename fields.
+model User {
+  id            String    @id @default(cuid())
+  // The onboarding "give username" step — distinct from `name`/`email` so a user can pick
+  // a public handle independent of their sign-in email.
+  username      String?   @unique
+  name          String?
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  accounts        Account[]
+  sessions        Session[]
+  collectionItems CollectionItem[]
+  watchTargets    WatchTarget[]
+  alerts          Alert[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
 // A single card/product as known by PriceCharting's catalog.
 model Card {
   id               String    @id @default(cuid())
@@ -52,9 +127,12 @@ model Card {
   @@map("cards")
 }
 
-// A card the user owns, with quantity/condition/cost-basis.
+// A card a user owns, with quantity/condition/cost-basis. userId nullable during the
+// multi-tenant migration — see the note above the User model.
 model CollectionItem {
   id            String    @id @default(cuid())
+  userId        String?   @map("user_id")
+  user          User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
   cardId        String    @map("card_id")
   card          Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
   quantity      Int       @default(1)
@@ -65,7 +143,11 @@ model CollectionItem {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  @@unique([cardId, condition])
+  // Was @@unique([cardId, condition]) pre-multi-tenant — a card+condition could only be
+  // owned once, globally. Now scoped per user, since two different users can each own a
+  // Near Mint copy of the same card.
+  @@unique([userId, cardId, condition])
+  @@index([cardId])
   @@map("collection_items")
 }
 
@@ -144,8 +226,14 @@ model MarketSale {
 }
 
 // A generated signal — "trending up", "time to sell", etc — surfaced from the trend engine.
+// One row per owning user (not deduplicated across owners of the same card): `acknowledged`
+// is inherently per-user — if two users own the same card, one dismissing a shared signal
+// must not hide it for the other. userId nullable during the multi-tenant migration — see
+// the note above the User model.
 model Alert {
   id           String    @id @default(cuid())
+  userId       String?   @map("user_id")
+  user         User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
   cardId       String    @map("card_id")
   card         Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
   type         AlertType
@@ -159,7 +247,7 @@ model Alert {
   createdAt    DateTime  @default(now()) @map("created_at")
 
   @@index([cardId, createdAt])
-  @@index([acknowledged, createdAt])
+  @@index([userId, acknowledged, createdAt])
   @@map("alerts")
 }
 
@@ -197,9 +285,14 @@ enum WatchKind {
   SEARCH
 }
 
-// A retailer page the user wants watched, checked on a schedule (see stockWatch.ts).
+// A retailer page a user wants watched, checked on a schedule (see stockWatch.ts). Unlike
+// Card, this is inherently personal (not a shared catalog), so SeenProduct/StockAlert don't
+// need their own userId — they're already scoped via watchTargetId. userId nullable during
+// the multi-tenant migration — see the note above the User model.
 model WatchTarget {
   id            String    @id @default(cuid())
+  userId        String?   @map("user_id")
+  user          User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
   retailer      Retailer
   kind          WatchKind @default(PRODUCT)
   label         String
@@ -222,7 +315,9 @@ model WatchTarget {
   seenProducts SeenProduct[]
   stockAlerts  StockAlert[]
 
-  @@unique([url])
+  // Was @@unique([url]) pre-multi-tenant — now two different users can each watch the same
+  // retail URL independently.
+  @@unique([userId, url])
   @@map("watch_targets")
 }
 

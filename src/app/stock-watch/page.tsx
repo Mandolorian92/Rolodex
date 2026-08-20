@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/session";
 import { Retailer } from "@/generated/prisma/client";
 import AddWatchTargetForm from "@/components/AddWatchTargetForm";
 import WatchTargetRowActions from "@/components/WatchTargetRowActions";
@@ -47,8 +48,10 @@ function StatusBadge({ inStock, lastError }: { inStock: boolean | null; lastErro
 }
 
 export default async function StockWatchPage() {
-  const targets = await prisma.watchTarget.findMany({ orderBy: { createdAt: "desc" } });
+  const userId = await requireUserId();
+  const targets = await prisma.watchTarget.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
   const recentAlerts = await prisma.stockAlert.findMany({
+    where: { watchTarget: { userId } },
     include: { watchTarget: true },
     orderBy: { createdAt: "desc" },
     take: 30,

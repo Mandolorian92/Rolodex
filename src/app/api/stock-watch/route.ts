@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Retailer, WatchKind } from "@/generated/prisma/client";
+import { getSessionUserId } from "@/lib/session";
 
 export async function GET() {
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
   const targets = await prisma.watchTarget.findMany({
+    where: { userId },
     orderBy: { createdAt: "desc" },
     include: { stockAlerts: { orderBy: { createdAt: "desc" }, take: 5 } },
   });
@@ -34,6 +39,9 @@ const CreateSchema = z
   });
 
 export async function POST(req: NextRequest) {
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
   const body = await req.json().catch(() => ({}));
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) {
@@ -44,7 +52,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const target = await prisma.watchTarget.create({
-      data: { retailer, kind, label, url, sku, keyword },
+      data: { userId, retailer, kind, label, url, sku, keyword },
     });
     return NextResponse.json({ target }, { status: 201 });
   } catch (err) {

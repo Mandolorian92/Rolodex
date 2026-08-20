@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/session";
 import { computePortfolioSummary, computePortfolioHistory, computeHypotheticalValue } from "@/lib/portfolio";
 import { formatCents, formatPct, formatPriceType } from "@/lib/format";
 import StatCard from "@/components/StatCard";
@@ -8,7 +9,9 @@ import PortfolioValueChart from "@/components/PortfolioValueChart";
 export const dynamic = "force-dynamic";
 
 export default async function PortfolioPage() {
+  const userId = await requireUserId();
   const items = await prisma.collectionItem.findMany({
+    where: { userId },
     include: {
       card: { include: { priceSnapshots: { orderBy: { capturedAt: "asc" } } } },
     },

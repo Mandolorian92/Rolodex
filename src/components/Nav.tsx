@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { auth, signOut } from "@/auth";
 import SyncButton from "@/components/SyncButton";
 
 export default async function Nav() {
-  const unacknowledgedCount = await prisma.alert.count({ where: { acknowledged: false } });
+  const session = await auth();
+  const unacknowledgedCount = session?.user?.id
+    ? await prisma.alert.count({ where: { userId: session.user.id, acknowledged: false } })
+    : 0;
 
   return (
     <header className="border-b border-zinc-800 bg-zinc-950">
@@ -37,6 +41,25 @@ export default async function Nav() {
             )}
           </Link>
           <SyncButton />
+          {session?.user ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-500">{session.user.username ?? session.user.email}</span>
+              <form
+                action={async () => {
+                  "use server";
+                  await signOut({ redirectTo: "/" });
+                }}
+              >
+                <button type="submit" className="hover:text-zinc-50">
+                  Sign out
+                </button>
+              </form>
+            </div>
+          ) : (
+            <Link href="/sign-in" className="hover:text-zinc-50">
+              Sign in
+            </Link>
+          )}
         </nav>
       </div>
     </header>

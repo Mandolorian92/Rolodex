@@ -90,12 +90,34 @@ function saleProvenance(snapshot: PriceSnapshot): string {
   return "";
 }
 
-async function recentlyAlerted(cardId: string, priceType: string, type: AlertType): Promise<boolean> {
+async function recentlyAlerted(
+  userId: string | null,
+  cardId: string,
+  priceType: string,
+  type: AlertType
+): Promise<boolean> {
   const cutoff = new Date(Date.now() - ALERT_COOLDOWN_HOURS * 60 * 60 * 1000);
   const existing = await prisma.alert.findFirst({
-    where: { cardId, priceType, type, createdAt: { gte: cutoff } },
+    where: { userId, cardId, priceType, type, createdAt: { gte: cutoff } },
   });
   return existing !== null;
+}
+
+/**
+ * Every user who owns at least one copy of this card, so a generated alert can be created
+ * once per owner (Alert.acknowledged is inherently per-user — see the schema comment on
+ * Alert). Includes `null` for pre-auth collection items that haven't been claimed by an
+ * account yet, so those don't silently stop generating alerts. Always returns at least one
+ * entry for any card this gets called on, since callers only evaluate cards that are
+ * actually in someone's collection.
+ */
+async function ownerUserIds(cardId: string): Promise<Array<string | null>> {
+  const owners = await prisma.collectionItem.findMany({
+    where: { cardId },
+    select: { userId: true },
+    distinct: ["userId"],
+  });
+  return owners.map((o) => o.userId);
 }
 
 /**
@@ -116,6 +138,7 @@ export async function evaluateCardTrends(cardId: string) {
     byPriceType.set(snap.priceType, list);
   }
 
+  const owners = await ownerUserIds(cardId);
   const created = [];
 
   for (const [priceType, series] of byPriceType) {
@@ -186,11 +209,13 @@ export async function evaluateCardTrends(cardId: string) {
     }
 
     for (const candidate of candidates) {
-      if (await recentlyAlerted(cardId, priceType, candidate.type)) continue;
-      const alert = await prisma.alert.create({
-        data: { cardId, priceType, ...candidate },
-      });
-      created.push(alert);
+      for (const ownerId of owners) {
+        if (await recentlyAlerted(ownerId, cardId, priceType, candidate.type)) continue;
+        const alert = await prisma.alert.create({
+          data: { userId: ownerId, cardId, priceType, ...candidate },
+        });
+        created.push(alert);
+      }
     }
   }
 

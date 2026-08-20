@@ -17,7 +17,8 @@ restocks. See [Stock watch](#stock-watch) below.
 - **Next.js 16** (App Router) + TypeScript + Tailwind
 - **Postgres** via **Prisma 7** (using the `@prisma/adapter-pg` driver adapter)
 - **Recharts** for price history / sparklines
-- No auth — this is built as a single-user app for now
+- **Auth.js v5** (`src/auth.ts`) for accounts — email/magic-link sign-in via Resend, database
+  sessions via the Prisma adapter. See [Accounts](#accounts) below.
 
 ## How it works
 
@@ -231,19 +232,20 @@ just faster.
 
 ```bash
 npm install
-cp .env.example .env   # then fill in DATABASE_URL and PRICECHARTING_API_KEY
+cp .env.example .env   # then fill in DATABASE_URL, PRICECHARTING_API_KEY, and AUTH_SECRET
 npm run db:migrate     # applies the schema to your Postgres database
 npm run db:seed        # optional: loads demo cards with synthetic price history
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000 — you'll land on `/sign-in`. See [Accounts](#accounts) below.
 
 ### Environment variables
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | yes | Postgres connection string |
+| `AUTH_SECRET` | yes | Signs/encrypts session cookies and tokens — generate with `openssl rand -base64 32` (or `npx auth secret`) |
 | `PRICECHARTING_API_KEY` | yes, for real data | Your 40-character token — Subscription page → "API/Download". Requires a paid PriceCharting subscription. |
 | `PRICECHARTING_SELLER_ID` | no | Your PriceCharting user id, for the collection importer — the part of `pricecharting.com/offers?...&seller=THIS_PART&status=collection` after `seller=`. Can also be entered directly in the import form instead. |
 | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` | no | eBay developer app credentials, for pulling sold comps |
@@ -342,8 +344,10 @@ that applies there. A couple of things worth knowing about it:
 - **Vercel Cron sends a GET request**, not POST, so both routes have a `GET` handler
   alongside the manual-trigger `POST` one. If `CRON_SECRET` is set, `GET` requires a
   matching `Authorization: Bearer` header (which Vercel adds automatically for its own Cron
-  Jobs once you set the same value in your project's environment variables) — otherwise
-  it's open, same as the rest of the app's unauthenticated routes.
+  Jobs once you set the same value in your project's environment variables) — otherwise it's
+  open. `/api/sync` and `/api/stock-watch/check` are the only routes exempt from the
+  sign-in requirement `src/proxy.ts` enforces everywhere else, specifically so Cron's GET
+  requests (which carry no session cookie) can reach them.
 - **Vercel's Hobby plan only allows once-daily cron runs** — the `*/5 * * * *` schedule
   needs a Pro plan. On Hobby, either upgrade or fall back to hitting `/api/stock-watch/check`
   yourself (browser tab, phone shortcut, another always-on machine running `npm run
@@ -365,15 +369,53 @@ that applies there. A couple of things worth knowing about it:
 | `npm run db:seed` | Load demo cards with synthetic price history |
 | `npm run db:studio` | Open Prisma Studio |
 
+## Accounts
+
+Rolodex is multi-tenant: sign in with an email address (a magic link via Resend — no
+password) and pick a username on first sign-in, and everything you add from then on —
+collection, watch targets, alerts — belongs to your account and no one else's.
+`src/auth.ts` configures [Auth.js v5](https://authjs.dev) with database sessions (the
+`@auth/prisma-adapter`) and reuses the same `RESEND_API_KEY`/`ALERT_EMAIL_FROM` already
+configured for [notifications](#notifications), so there's no separate email credential to
+set up.
+
+- **Route protection** (`src/proxy.ts`) redirects signed-out visitors to `/sign-in` for
+  pages and returns a 401 for API routes, with two exceptions: `/api/sync` and
+  `/api/stock-watch/check`, which Vercel Cron hits without a session (see
+  [Keeping prices fresh](#keeping-prices--and-stock-watches--fresh) above).
+- **Every page and API route additionally scopes its own queries** by the signed-in user
+  (`src/lib/session.ts`'s `requireUserId()`/`getSessionUserId()`) rather than relying on
+  proxy alone — see the note in `src/proxy.ts` on why.
+- **`Card`, `PriceSnapshot`, and `MarketSale` stay unscoped** — they're a shared catalog,
+  not personal data. Two users who both own a Base Set Charizard share its price history and
+  a single sync run, rather than each triggering their own PriceCharting/TCGPlayer calls;
+  `syncCollection()` still iterates every distinct card platform-wide for exactly this
+  reason. Only ownership (`CollectionItem`, `WatchTarget`) and personal signals (`Alert`) are
+  scoped to a user — see the comment above the `User` model in `prisma/schema.prisma`.
+- **Alerts are generated once per owning user**, not once per card — `Alert.acknowledged` is
+  inherently personal, so if two users own the same card and it trends up, each gets their
+  own alert row and dismissing one leaves the other's untouched (`ownerUserIds()` in
+  `src/lib/trends.ts`/`src/lib/variants.ts`, and the `userId` threaded through
+  `evaluateGradingOpportunity()`).
+- **Alert/stock-watch notification email is still a single global address** (`ALERT_EMAIL_TO`)
+  regardless of who owns the alert — genuinely per-user email delivery hasn't been built yet.
+  Fine for a single-operator deployment; worth revisiting before onboarding unrelated users.
+- **`userId` is nullable throughout** (`CollectionItem`, `WatchTarget`, `Alert`) because this
+  schema shipped after real single-user data already existed, and Postgres can't backfill a
+  `NOT NULL` column with a meaningful value on its own. Pre-auth rows just sit there
+  unowned — nothing claims them automatically. A follow-up migration to make `userId`
+  required (once there's a claim flow for that old data) hasn't been built yet.
+
 ## Data model
 
-See `prisma/schema.prisma`. Briefly: `Card` (catalog entry) → `CollectionItem` (what you
-own), `PriceSnapshot` (the merged time series — guide pulls and individual sales alike —
-that the ticker and trend engine read), `MarketSale` (sold-transaction details for display:
-title/link/image/condition), and `Alert` (generated signals). `PriceSnapshot.source` and
-`MarketSale.source` share one `PriceSource` enum (`PRICECHARTING_GUIDE`,
-`PRICECHARTING_SALE`, `EBAY_SALE`, `TCGPLAYER_MARKET`, `MANUAL`) so every price point's
-provenance is explicit.
+See `prisma/schema.prisma`. Briefly: `User`/`Account`/`Session`/`VerificationToken` (Auth.js's
+standard accounts schema — see [Accounts](#accounts) above), `Card` (catalog entry, shared
+across all users) → `CollectionItem` (what a user owns), `PriceSnapshot` (the merged time
+series — guide pulls and individual sales alike — that the ticker and trend engine read),
+`MarketSale` (sold-transaction details for display: title/link/image/condition), and `Alert`
+(generated signals, one row per owning user). `PriceSnapshot.source` and `MarketSale.source`
+share one `PriceSource` enum (`PRICECHARTING_GUIDE`, `PRICECHARTING_SALE`, `EBAY_SALE`,
+`TCGPLAYER_MARKET`, `MANUAL`) so every price point's provenance is explicit.
 
 Stock watch (see above) is a separate, independent set of models: `WatchTarget` (a retailer
 page being watched), `SeenProduct` (listings already seen, for new-listing detection), and
@@ -415,12 +457,16 @@ grading company; at 10 it splits by grader. Our `Condition` enum mirrors that.
 ## Not yet built
 
 - Push/SMS notifications — email is wired up (see above), push would need a service worker
-  + subscription storage since there's no user accounts to hang a device token off of
+  + a per-`User` subscription-token table (accounts exist now — see [Accounts](#accounts) —
+  so this is mostly a schema addition away, not a redesign)
 - Scheduled syncing (see above — you need to wire up your own cron)
 - Stock watch "new listing" search mode for GameStop/Walmart/Target — only Best Buy has it
   right now, since its official API supports keyword search cleanly. The other three would
   need scraping a search-results page, which is shakier than a single known product page.
-- Multi-user support / auth
+- Per-user notification email — alert/stock emails still go to one global `ALERT_EMAIL_TO`
+  regardless of which user the alert belongs to; see [Accounts](#accounts)
+- A claim/backfill flow for `CollectionItem`/`WatchTarget`/`Alert` rows created before
+  accounts existed (`userId` is still nullable — see [Accounts](#accounts))
 - CSV bulk price download (Legendary-tier PriceCharting subscribers can download the full
   price guide as CSV once/day instead of per-product API calls — not wired up yet, but
   would be a good fit for keeping a large collection's prices fresh without burning the

@@ -163,17 +163,23 @@ async function main() {
       update: {},
     });
 
-    await prisma.collectionItem.upsert({
-      where: { cardId_condition: { cardId: card.id, condition: seed.condition } },
-      create: {
-        cardId: card.id,
-        quantity: seed.quantity,
-        condition: seed.condition,
-        purchasePrice: seed.purchasePrice,
-        purchasedAt: new Date(Date.now() - 60 * DAY),
-      },
-      update: {},
+    // Prisma's compound-unique lookup can't take `null` for the (still-unclaimed, see
+    // README) userId member — SQL's NULL isn't equal to itself, so a plain filter (which
+    // Prisma does support with null) stands in for upsert's atomic unique-key shortcut here.
+    const existingItem = await prisma.collectionItem.findFirst({
+      where: { userId: null, cardId: card.id, condition: seed.condition },
     });
+    if (!existingItem) {
+      await prisma.collectionItem.create({
+        data: {
+          cardId: card.id,
+          quantity: seed.quantity,
+          condition: seed.condition,
+          purchasePrice: seed.purchasePrice,
+          purchasedAt: new Date(Date.now() - 60 * DAY),
+        },
+      });
+    }
 
     const priceType = CONDITION_TO_PRICE_TYPE[seed.condition];
 
@@ -269,7 +275,7 @@ async function main() {
     }
 
     const alerts = await evaluateCardTrends(card.id);
-    const gradingAlert = await evaluateGradingOpportunity(card.id, seed.condition);
+    const gradingAlert = await evaluateGradingOpportunity(card.id, seed.condition, null);
     const alertCount = alerts.length + (gradingAlert ? 1 : 0);
     console.log(`Seeded ${seed.name} (${alertCount} alert(s) generated)`);
   }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/session";
 import { pickPrimarySeries } from "@/lib/cardStats";
 import { formatCents, formatPct, formatPriceType } from "@/lib/format";
 import Sparkline from "@/components/Sparkline";
@@ -9,12 +10,14 @@ import StatCard from "@/components/StatCard";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
+  const userId = await requireUserId();
   const items = await prisma.collectionItem.findMany({
+    where: { userId },
     include: {
       card: {
         include: {
           priceSnapshots: { orderBy: { capturedAt: "asc" } },
-          alerts: { where: { acknowledged: false }, orderBy: { createdAt: "desc" }, take: 3 },
+          alerts: { where: { userId, acknowledged: false }, orderBy: { createdAt: "desc" }, take: 3 },
         },
       },
     },

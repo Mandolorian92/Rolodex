@@ -149,7 +149,7 @@ export interface ManaboxImportSummary {
  * import with the same file (or a re-export after only a few cards changed) only writes
  * what's actually different.
  */
-export async function importManaboxCsv(csvText: string): Promise<ManaboxImportSummary> {
+export async function importManaboxCsv(csvText: string, userId: string): Promise<ManaboxImportSummary> {
   const { rows, skipped } = parseManaboxCsv(csvText);
 
   const summary: ManaboxImportSummary = {
@@ -183,14 +183,15 @@ export async function importManaboxCsv(csvText: string): Promise<ManaboxImportSu
       cardChanged = true;
     }
 
-    const existingItem = await prisma.collectionItem.findUnique({
-      where: { cardId_condition: { cardId: card.id, condition: row.condition } },
+    const existingItem = await prisma.collectionItem.findFirst({
+      where: { userId, cardId: card.id, condition: row.condition },
     });
 
     let itemChanged = false;
     if (!existingItem) {
       await prisma.collectionItem.create({
         data: {
+          userId,
           cardId: card.id,
           quantity: row.quantity,
           condition: row.condition,
