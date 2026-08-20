@@ -25,7 +25,7 @@ restocks. See [Stock watch](#stock-watch) below.
   cached locally as `Card` rows, keyed by PriceCharting's product id.
 - **CollectionItem** rows track what you actually own — quantity, condition (mapped to the
   matching PriceCharting price field via `src/lib/grades.ts`), cost basis.
-- You can populate your collection two ways:
+- You can populate your collection three ways:
   - **Import** (`src/lib/import.ts`, `POST /api/collection/import`, the "Import from
     PriceCharting" button on `/collection`) — pulls your existing PriceCharting collection
     in one call via the Marketplace API (`/api/offers?status=collection`), including a
@@ -34,6 +34,9 @@ restocks. See [Stock watch](#stock-watch) below.
     condition, or a new price snapshot) when something's genuinely different. Re-importing a
     600-card collection where only 5 changed does 5 writes, not 600 — the result summary
     breaks out new/updated/unchanged counts so that's visible, not just assumed.
+  - **ManaBox CSV import** (`src/lib/manabox.ts`, "Import from ManaBox (CSV)" on
+    `/collection`) — same delta-aware behavior, for a collection exported from the ManaBox
+    app instead. See [TCGPlayer and ManaBox](#tcgplayer-and-manabox) below.
   - **Manual add** (`/collection/add`) — search the catalog and add a card by hand.
 - A **sync** (`src/lib/sync.ts`, exposed as `POST /api/sync` and `npm run sync`) does three
   things per card, in order:
@@ -45,7 +48,12 @@ restocks. See [Stock watch](#stock-watch) below.
      display) and mirrored into `PriceSnapshot` (`source: PRICECHARTING_SALE` /
      `EBAY_SALE`) at its real sale date — so the trend engine sees an actual sale exactly
      like a guide-price move, not as a separate side channel.
-  3. Runs the **trend engine** against the merged timeline.
+  3. Pulls TCGPlayer's Market Price (`src/lib/tcgplayerSync.ts`), if configured and the
+     card's a Magic/Pokémon/Yu-Gi-Oh product — see [TCGPlayer and ManaBox](#tcgplayer-and-manabox)
+     below. This one runs independently of steps 1-2: a card with no real PriceCharting id
+     (imported via ManaBox) skips them entirely rather than erroring, and a PriceCharting
+     failure on a card that does have one doesn't block this step either.
+  4. Runs the **trend engine** against the merged timeline.
 
   All PriceCharting calls go through a shared throttle (`src/lib/rateLimit.ts`) to stay
   under their hard 1 request/second limit — exceeding it risks API access being revoked.
@@ -233,6 +241,7 @@ Open http://localhost:3000.
 | `PRICECHARTING_API_KEY` | yes, for real data | Your 40-character token — Subscription page → "API/Download". Requires a paid PriceCharting subscription. |
 | `PRICECHARTING_SELLER_ID` | no | Your PriceCharting user id, for the collection importer — the part of `pricecharting.com/offers?...&seller=THIS_PART&status=collection` after `seller=`. Can also be entered directly in the import form instead. |
 | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` | no | eBay developer app credentials, for pulling sold comps |
+| `TCGPLAYER_CLIENT_ID` / `TCGPLAYER_CLIENT_SECRET` | no | TCGPlayer developer credentials — adds TCGPlayer's own Market Price as a second real-market signal for Magic/Pokémon/Yu-Gi-Oh cards. Also what prices any card imported via ManaBox, below |
 | `RESEND_API_KEY` | no | Enables email notifications — [get a free key](https://resend.com) |
 | `ALERT_EMAIL_TO` | no | Where alert emails get sent. Required (along with `RESEND_API_KEY`) to turn notifications on |
 | `ALERT_EMAIL_FROM` | no | Sender address. Defaults to Resend's shared test sender, which works without verifying your own domain |
@@ -256,6 +265,40 @@ Insights API, which eBay only grants to approved developer accounts on request �
 [the eBay docs](https://developer.ebay.com/api-docs/buy/marketplace-insights/overview.html).
 If your keys don't have that access yet, `fetchSoldComps` logs a warning and returns an
 empty list rather than failing the sync.
+
+### TCGPlayer and ManaBox
+
+Two more integrations, aimed at Magic/Pokémon/Yu-Gi-Oh collections specifically (TCGPlayer
+doesn't carry sports cards):
+
+- **TCGPlayer** (`src/lib/tcgplayer.ts`, `src/lib/tcgplayerSync.ts`) adds TCGPlayer's own
+  Market Price — itself computed from recent actual sales, same spirit as PriceCharting's
+  guide price and eBay's sold comps — as a third independent signal on the same merged
+  timeline. Every sync, for any card whose category is Magic/Pokémon/Yu-Gi-Oh
+  (`src/lib/cardMeta.ts` already derives this), it matches the card against TCGPlayer's
+  catalog once (cached on `Card.tcgplayerProductId`, re-attempted every 14 days if no match
+  was found) and pulls the current Market Price. Requires a
+  [TCGPlayer developer application](https://docs.tcgplayer.com/) — not instant, it's a
+  manual review — and **hasn't been tested against the real API**: this project's dev
+  environment can't reach `api.tcgplayer.com` at all, so the endpoint paths, response
+  shapes, and the category-id mapping are built from commonly-documented API conventions,
+  not confirmed live. Treat the first real sync with credentials in place as the live test —
+  the same kind of debugging PriceCharting's own collection import needed early on (the
+  cursor-pagination bug, the offer-id type mismatch). If pricing comes back empty, check
+  `TCGPLAYER_CATEGORY_ID` in `tcgplayer.ts` against a real `GET /catalog/categories` call
+  first.
+- **ManaBox** (`src/lib/manabox.ts`, "Import from ManaBox (CSV)" on `/collection`) — ManaBox
+  is a mobile scanning/cataloging app with no public API, so a CSV export
+  (collection → export → CSV in the app) is the only integration surface available. Cards
+  brought in this way have no PriceCharting product id — they're keyed as
+  `manabox:<manaboxId>` — so they rely entirely on TCGPlayer (above) for pricing rather than
+  PriceCharting. Same caveat as TCGPlayer: the expected CSV column names
+  (`FIELD_ALIASES` in `manabox.ts`) come from the commonly-documented ManaBox export format,
+  not a real exported file, since this environment has no way to produce one. Import is
+  delta-aware like the PriceCharting importer — safe to re-run after only a few cards
+  changed. Foil cards get " (Foil)" appended to the stored name so they're tracked as a
+  distinct card from the non-foil printing, mirroring how PriceCharting differentiates
+  Holo/Reverse-Holo prints.
 
 ### Notifications
 
@@ -323,7 +366,8 @@ own), `PriceSnapshot` (the merged time series — guide pulls and individual sal
 that the ticker and trend engine read), `MarketSale` (sold-transaction details for display:
 title/link/image/condition), and `Alert` (generated signals). `PriceSnapshot.source` and
 `MarketSale.source` share one `PriceSource` enum (`PRICECHARTING_GUIDE`,
-`PRICECHARTING_SALE`, `EBAY_SALE`, `MANUAL`) so every price point's provenance is explicit.
+`PRICECHARTING_SALE`, `EBAY_SALE`, `TCGPLAYER_MARKET`, `MANUAL`) so every price point's
+provenance is explicit.
 
 Stock watch (see above) is a separate, independent set of models: `WatchTarget` (a retailer
 page being watched), `SeenProduct` (listings already seen, for new-listing detection), and

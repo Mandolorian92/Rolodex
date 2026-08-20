@@ -6,8 +6,9 @@ import { evaluateCardTrends } from "@/lib/trends";
 import { notifyNewAlerts, type AlertWithCard } from "@/lib/notify";
 import { checkForHigherValueVariants, shouldRecheckVariant } from "@/lib/variants";
 import { evaluateGradingOpportunity } from "@/lib/gradingRecs";
-import { deriveCategory, detectLanguage } from "@/lib/cardMeta";
+import { deriveCategory, detectLanguage, isManaboxOnlyCard } from "@/lib/cardMeta";
 import { startSyncProgress, reportSyncCard, completeSyncCard, finishSyncProgress } from "@/lib/syncProgress";
+import { syncTcgplayerPrice } from "@/lib/tcgplayerSync";
 
 /**
  * How many cards' variant check a single syncCollection() run will actually perform, even
@@ -27,17 +28,24 @@ export interface CardSyncResult {
   salesRecorded: number;
   alerts: AlertWithCard[];
   variantChecked: boolean;
+  tcgplayerSynced: boolean;
   error?: string;
 }
 
 /**
- * Refresh a single card's data: the guide price (per condition, from PriceCharting's
- * Prices API), then real recent sold transactions (PriceCharting's own marketplace, and
- * eBay if configured) — both feed the same PriceSnapshot timeline, so the trend engine
- * treats an actual sale exactly like a guide-price move, at its real sale date.
+ * Refresh a single card's data: PriceCharting's guide price (per condition) and real recent
+ * sold transactions (its own marketplace, and eBay if configured), plus TCGPlayer's Market
+ * Price for Magic/Pokemon/Yu-Gi-Oh cards if configured — all three feed the same
+ * PriceSnapshot timeline, so the trend engine treats any of them exactly like a guide-price
+ * move, at its real capture date.
+ *
+ * A card with no real PriceCharting id (imported via ManaBox — see cardMeta.ts) skips the
+ * PriceCharting steps entirely rather than erroring; a PriceCharting failure on a card that
+ * does have an id is recorded but no longer aborts the rest of the sync, since TCGPlayer is
+ * a genuinely independent source that shouldn't depend on PriceCharting succeeding.
  */
 export async function syncCard(cardId: string, opts?: { allowVariantCheck?: boolean }): Promise<CardSyncResult> {
-  const card = await prisma.card.findUniqueOrThrow({ where: { id: cardId } });
+  let card = await prisma.card.findUniqueOrThrow({ where: { id: cardId } });
   reportSyncCard(card.name);
   const result: CardSyncResult = {
     cardId: card.id,
@@ -46,48 +54,59 @@ export async function syncCard(cardId: string, opts?: { allowVariantCheck?: bool
     salesRecorded: 0,
     alerts: [],
     variantChecked: false,
+    tcgplayerSynced: false,
   };
 
-  try {
-    const product = await getProduct(card.priceChartingId);
-    const prices = extractPriceFields(product);
+  const hasPriceChartingId = !isManaboxOnlyCard(card.priceChartingId);
 
-    for (const [priceType, cents] of Object.entries(prices)) {
-      await prisma.priceSnapshot.create({
-        data: { cardId: card.id, source: PriceSource.PRICECHARTING_GUIDE, priceType, price: cents },
-      });
-      result.guideSnapshotsCreated += 1;
+  if (hasPriceChartingId) {
+    try {
+      const product = await getProduct(card.priceChartingId);
+      const prices = extractPriceFields(product);
+
+      for (const [priceType, cents] of Object.entries(prices)) {
+        await prisma.priceSnapshot.create({
+          data: { cardId: card.id, source: PriceSource.PRICECHARTING_GUIDE, priceType, price: cents },
+        });
+        result.guideSnapshotsCreated += 1;
+      }
+
+      // Category/language are derived from data this call already returned — no extra API
+      // cost — so every sync also backfills them for cards imported before this existed,
+      // without needing a separate one-off migration script. Only fills in a currently-null
+      // value, never overwrites one — the heuristic misses real cases (e.g. a Japanese set
+      // whose name doesn't literally contain "Japanese"), so once a value is set — by this
+      // heuristic or by a manual correction on the card page — a later sync won't stomp it.
+      const consoleName = product["console-name"] ?? card.consoleName;
+      const data: { category?: string | null; language?: string | null } = {};
+      if (card.category === null) data.category = deriveCategory(consoleName);
+      if (card.language === null) data.language = detectLanguage(product["product-name"] ?? card.name, consoleName);
+      if (Object.keys(data).length > 0) {
+        card = await prisma.card.update({ where: { id: card.id }, data });
+      }
+    } catch (err) {
+      // Recorded but not fatal — TCGPlayer and eBay are independent sources and shouldn't
+      // be skipped just because PriceCharting failed for this card.
+      result.error = err instanceof Error ? err.message : String(err);
     }
 
-    // Category/language are derived from data this call already returned — no extra API
-    // cost — so every sync also backfills them for cards imported before this existed,
-    // without needing a separate one-off migration script. Only fills in a currently-null
-    // value, never overwrites one — the heuristic misses real cases (e.g. a Japanese set
-    // whose name doesn't literally contain "Japanese"), so once a value is set — by this
-    // heuristic or by a manual correction on the card page — a later sync won't stomp it.
-    const consoleName = product["console-name"] ?? card.consoleName;
-    const data: { category?: string | null; language?: string | null } = {};
-    if (card.category === null) data.category = deriveCategory(consoleName);
-    if (card.language === null) data.language = detectLanguage(product["product-name"] ?? card.name, consoleName);
-    if (Object.keys(data).length > 0) {
-      await prisma.card.update({ where: { id: card.id }, data });
+    try {
+      result.salesRecorded += await syncPriceChartingSoldOffers(card);
+    } catch (err) {
+      console.warn(`[sync] PriceCharting sold offers failed for card ${card.id}:`, err);
     }
-  } catch (err) {
-    result.error = err instanceof Error ? err.message : String(err);
-    return result;
+
+    try {
+      result.salesRecorded += await syncEbaySoldComps(card);
+    } catch (err) {
+      console.warn(`[sync] eBay sold comps failed for card ${card.id}:`, err);
+    }
   }
 
   try {
-    result.salesRecorded += await syncPriceChartingSoldOffers(card);
+    result.tcgplayerSynced = (await syncTcgplayerPrice(card)) > 0;
   } catch (err) {
-    // Sold-offer data is a bonus on top of the guide price; don't fail the whole sync over it.
-    console.warn(`[sync] PriceCharting sold offers failed for card ${card.id}:`, err);
-  }
-
-  try {
-    result.salesRecorded += await syncEbaySoldComps(card);
-  } catch (err) {
-    console.warn(`[sync] eBay sold comps failed for card ${card.id}:`, err);
+    console.warn(`[sync] TCGPlayer price sync failed for card ${card.id}:`, err);
   }
 
   const alerts = await evaluateCardTrends(card.id);
@@ -98,7 +117,7 @@ export async function syncCard(cardId: string, opts?: { allowVariantCheck?: bool
   // recently (see shouldRecheckVariant()), and only while this sync run still has budget
   // left (see MAX_VARIANT_CHECKS_PER_SYNC / opts.allowVariantCheck). A fresh check always
   // runs via the manual "Check for higher-value variants" button instead, ignoring both.
-  if ((opts?.allowVariantCheck ?? true) && shouldRecheckVariant(card)) {
+  if (hasPriceChartingId && (opts?.allowVariantCheck ?? true) && shouldRecheckVariant(card)) {
     result.variantChecked = true;
     try {
       const { alert: variantAlert } = await checkForHigherValueVariants(card);

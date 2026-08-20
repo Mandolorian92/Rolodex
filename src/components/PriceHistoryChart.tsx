@@ -12,7 +12,12 @@ import {
 } from "recharts";
 import { formatCents, formatPct, formatPriceType } from "@/lib/format";
 
-export type PriceSourceValue = "PRICECHARTING_GUIDE" | "PRICECHARTING_SALE" | "EBAY_SALE" | "MANUAL";
+export type PriceSourceValue =
+  | "PRICECHARTING_GUIDE"
+  | "PRICECHARTING_SALE"
+  | "EBAY_SALE"
+  | "TCGPLAYER_MARKET"
+  | "MANUAL";
 
 export interface PricePoint {
   capturedAt: string;
@@ -25,6 +30,7 @@ const SOURCE_META: Record<PriceSourceValue, { label: string; color: string }> = 
   PRICECHARTING_GUIDE: { label: "Guide price", color: "#34d399" },
   PRICECHARTING_SALE: { label: "PriceCharting sale", color: "#38bdf8" },
   EBAY_SALE: { label: "eBay sale", color: "#fbbf24" },
+  TCGPLAYER_MARKET: { label: "TCGPlayer market price", color: "#c084fc" },
   MANUAL: { label: "Manual", color: "#a1a1aa" },
 };
 

@@ -19,12 +19,14 @@ export async function POST() {
   const totalAlerts = results.reduce((sum, r) => sum + r.alerts.length, 0);
   const totalGuideSnapshots = results.reduce((sum, r) => sum + r.guideSnapshotsCreated, 0);
   const totalSales = results.reduce((sum, r) => sum + r.salesRecorded, 0);
+  const totalTcgplayer = results.filter((r) => r.tcgplayerSynced).length;
   const errors = results.filter((r) => r.error);
 
   return NextResponse.json({
     syncedCards: results.length,
     guideSnapshotsCreated: totalGuideSnapshots,
     salesRecorded: totalSales,
+    tcgplayerPricesSynced: totalTcgplayer,
     alertsCreated: totalAlerts,
     errors: errors.map((e) => ({ cardId: e.cardId, cardName: e.cardName, error: e.error })),
     results: results.map((r) => ({
@@ -32,6 +34,7 @@ export async function POST() {
       cardName: r.cardName,
       guideSnapshotsCreated: r.guideSnapshotsCreated,
       salesRecorded: r.salesRecorded,
+      tcgplayerSynced: r.tcgplayerSynced,
       alertsCreated: r.alerts.length,
       error: r.error,
     })),

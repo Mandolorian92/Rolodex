@@ -6,6 +6,7 @@ import { buildCategoryOptions, buildLanguageOptions, matchesCardMetaFilter, CATE
 import { formatCents, formatPriceType, formatPct } from "@/lib/format";
 import CollectionRowActions from "@/components/CollectionRowActions";
 import ImportCollectionForm from "@/components/ImportCollectionForm";
+import ManaboxImportForm from "@/components/ManaboxImportForm";
 import CollectionFilters from "@/components/CollectionFilters";
 
 export const dynamic = "force-dynamic";
@@ -146,7 +147,10 @@ export default async function CollectionPage({
         </div>
       </div>
 
-      <ImportCollectionForm />
+      <div className="flex flex-wrap gap-3">
+        <ImportCollectionForm />
+        <ManaboxImportForm />
+      </div>
 
       <CollectionFilters
         category={category}

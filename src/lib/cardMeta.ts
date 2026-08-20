@@ -7,6 +7,18 @@
  * incomplete: extend the token lists below as new sets/languages come up.
  */
 
+/**
+ * Cards imported from ManaBox (src/lib/manabox.ts) have no real PriceCharting product id —
+ * they're keyed as `manabox:<manaboxId>` so Card.priceChartingId stays unique without one.
+ * Anything checking whether a card actually has PriceCharting data to fetch should test
+ * this first rather than assuming every Card row is PriceCharting-backed.
+ */
+export const MANABOX_ID_PREFIX = "manabox:";
+
+export function isManaboxOnlyCard(priceChartingId: string): boolean {
+  return priceChartingId.startsWith(MANABOX_ID_PREFIX);
+}
+
 export const CATEGORY_LABELS: Record<string, string> = {
   "pokemon-card": "Pokémon",
   "sports-card": "Sports",

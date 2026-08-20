@@ -1,13 +1,13 @@
 // Prisma schema for Rolodex — a price-tracking "ticker" for trading card collections.
 //
-// Two kinds of price data feed the ticker, and they're deliberately kept in one merged
-// timeline (PriceSnapshot) rather than treating the guide price as primary and sales as a
-// side note: PriceCharting's per-condition guide price (an aggregate that can lag real
-// demand) and actual recent sold transactions (PriceCharting's own marketplace, and eBay
-// when configured) — see PriceSource. Individual sold comps are also kept in MarketSale
-// with their listing details (title/link/image) for display, but the price itself is
-// mirrored into PriceSnapshot so the trend engine reacts to real sales exactly like it
-// reacts to a guide-price move.
+// Several kinds of price data feed the ticker, and they're deliberately kept in one merged
+// timeline (PriceSnapshot) rather than treating the guide price as primary and everything
+// else as a side note: PriceCharting's per-condition guide price (an aggregate that can lag
+// real demand), actual recent sold transactions (PriceCharting's own marketplace, and eBay
+// when configured), and TCGPlayer's own Market Price (Magic/Pokemon/Yu-Gi-Oh only) — see
+// PriceSource. Individual sold comps are also kept in MarketSale with their listing details
+// (title/link/image) for display, but the price itself is mirrored into PriceSnapshot so
+// the trend engine reacts to real sales exactly like it reacts to a guide-price move.
 
 generator client {
   provider = "prisma-client"
@@ -36,6 +36,11 @@ model Card {
   // as the wrong print.
   variantLabel     String?   @map("variant_label")
   variantCheckedAt DateTime? @map("variant_checked_at")
+  // TCGPlayer's own catalog id for this card, once matched — see src/lib/tcgplayer.ts.
+  // Cached so sync doesn't re-search the catalog every run; tcgplayerCheckedAt gates how
+  // often a failed/stale match gets retried (mirrors variantCheckedAt's staleness pattern).
+  tcgplayerProductId String?   @map("tcgplayer_product_id")
+  tcgplayerCheckedAt DateTime? @map("tcgplayer_checked_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
@@ -109,6 +114,11 @@ enum PriceSource {
   PRICECHARTING_SALE
   /// An actual sold transaction on eBay.
   EBAY_SALE
+  /// TCGPlayer's aggregate Market Price for a product — itself computed from recent sales,
+  /// so it's a second independent real-market signal alongside PriceCharting's guide price
+  /// and eBay sold comps. Magic/Pokemon/Yu-Gi-Oh only — TCGPlayer doesn't carry sports
+  /// cards. See src/lib/tcgplayer.ts.
+  TCGPLAYER_MARKET
   MANUAL
 }
 
