@@ -6,6 +6,7 @@ import { formatCents, formatPct, formatPriceType } from "@/lib/format";
 import Sparkline from "@/components/Sparkline";
 import TrendBadge from "@/components/TrendBadge";
 import StatCard from "@/components/StatCard";
+import SourceBreakdown from "@/components/SourceBreakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +89,7 @@ export default async function DashboardPage() {
                       <td className="px-4 py-3 text-zinc-400">{formatPriceType(primary.priceType)}</td>
                       <td className="px-4 py-3 font-mono text-zinc-100">
                         {formatCents(primary.stats.latest.price)}
+                        <SourceBreakdown quotes={primary.sourceBreakdown} />
                       </td>
                       <td
                         className={`px-4 py-3 font-mono ${

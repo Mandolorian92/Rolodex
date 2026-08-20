@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { AlertType, PriceSource, type PriceSnapshot } from "@/generated/prisma/client";
 import { formatCents, formatPriceType } from "@/lib/format";
+import { tickerSeries } from "@/lib/tickerSeries";
 
 /** Minimum move (as a fraction, e.g. 0.10 = 10%) over 7 days to call something "trending". */
 const TRENDING_THRESHOLD = 0.1;
@@ -142,7 +143,10 @@ export async function evaluateCardTrends(cardId: string) {
   const created = [];
 
   for (const [priceType, series] of byPriceType) {
-    const stats = computeChangeStats(series);
+    // Same policy as the dashboard/collection "latest price" — see tickerSeries.ts: real
+    // sold transactions drive alerts when there are any, so a signal reflects what the
+    // market actually paid rather than a guide-price move that a real sale has superseded.
+    const stats = computeChangeStats(tickerSeries(series));
     if (!stats) continue;
     if (stats.latest.price < MIN_ALERT_VALUE_CENTS) continue;
 

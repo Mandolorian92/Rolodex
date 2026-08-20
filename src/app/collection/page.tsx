@@ -9,6 +9,7 @@ import CollectionRowActions from "@/components/CollectionRowActions";
 import ImportCollectionForm from "@/components/ImportCollectionForm";
 import ManaboxImportForm from "@/components/ManaboxImportForm";
 import CollectionFilters from "@/components/CollectionFilters";
+import SourceBreakdown from "@/components/SourceBreakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -223,6 +224,7 @@ export default async function CollectionPage({
                       <>
                         {formatCents(primary.stats.latest.price)}{" "}
                         <span className="text-xs text-zinc-500">({formatPriceType(primary.priceType)})</span>
+                        <SourceBreakdown quotes={primary.sourceBreakdown} />
                       </>
                     ) : (
                       <span className="text-zinc-600">—</span>

@@ -1,6 +1,7 @@
 import type { Condition, PriceSnapshot } from "@/generated/prisma/client";
 import { computeChangeStats, type ChangeStats } from "@/lib/trends";
 import { CONDITION_TO_PRICE_TYPE } from "@/lib/grades";
+import { tickerSeries, latestBySource, type SourceQuote } from "@/lib/tickerSeries";
 
 /** Fallback priceType order (highest grade first) when we don't know which condition is owned. */
 const PRIORITY = [
@@ -18,6 +19,8 @@ const PRIORITY = [
 export interface PrimarySeries {
   priceType: string;
   stats: ChangeStats;
+  /** Every source's latest quote for this priceType, for showing side by side — see tickerSeries.ts. */
+  sourceBreakdown: SourceQuote[];
 }
 
 function groupByPriceType(snapshots: PriceSnapshot[]): Map<string, PriceSnapshot[]> {
@@ -59,9 +62,13 @@ export function pickPrimarySeries(
   }
 
   const series = byType.get(chosenType)!;
-  const stats = computeChangeStats(series);
+  // Real sold transactions drive the headline number/trend when there are any — a guide
+  // price is an estimate, a sale is evidence — but every source's own latest quote is still
+  // surfaced via sourceBreakdown so the two guide sources disagreeing (or a guide lagging a
+  // sale) is visible rather than silently resolved.
+  const stats = computeChangeStats(tickerSeries(series));
   if (!stats) return null;
-  return { priceType: chosenType, stats };
+  return { priceType: chosenType, stats, sourceBreakdown: latestBySource(series) };
 }
 
 /** Order low-grade to high-grade, for displaying a card's full price ladder. */

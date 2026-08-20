@@ -1,4 +1,14 @@
+import { PriceSource } from "@/generated/prisma/client";
 import { CARD_PRICE_TYPE_LABELS } from "@/lib/pricecharting";
+
+/** Short labels for the multi-source price breakdown — table space is tight, so these stay terse. */
+export const PRICE_SOURCE_LABELS: Record<PriceSource, string> = {
+  PRICECHARTING_GUIDE: "PriceCharting",
+  PRICECHARTING_SALE: "PC sale",
+  EBAY_SALE: "eBay sale",
+  TCGPLAYER_MARKET: "TCGPlayer",
+  MANUAL: "Manual",
+};
 
 export function formatCents(cents: number): string {
   return (cents / 100).toLocaleString("en-US", {
