@@ -8,6 +8,7 @@ import { formatCents, formatPriceType, formatPct } from "@/lib/format";
 import CollectionRowActions from "@/components/CollectionRowActions";
 import ImportCollectionForm from "@/components/ImportCollectionForm";
 import ManaboxImportForm from "@/components/ManaboxImportForm";
+import TcgplayerImportForm from "@/components/TcgplayerImportForm";
 import CollectionFilters from "@/components/CollectionFilters";
 import SourceBreakdown from "@/components/SourceBreakdown";
 
@@ -162,6 +163,7 @@ export default async function CollectionPage({
       <div className="flex flex-wrap gap-3">
         <ImportCollectionForm />
         <ManaboxImportForm />
+        <TcgplayerImportForm />
       </div>
 
       <CollectionFilters

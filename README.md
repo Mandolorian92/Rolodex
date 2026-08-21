@@ -38,6 +38,17 @@ restocks. See [Stock watch](#stock-watch) below.
   - **ManaBox CSV import** (`src/lib/manabox.ts`, "Import from ManaBox (CSV)" on
     `/collection`) — same delta-aware behavior, for a collection exported from the ManaBox
     app instead. See [TCGPlayer and ManaBox](#tcgplayer-and-manabox) below.
+  - **TCGPlayer CSV import** (`src/lib/tcgplayerImport.ts`, "Import from TCGplayer (CSV)"
+    on `/collection`) — reconciles a TCGPlayer app export (collection → ⋯ → export) against
+    the existing catalog rather than treating it as a separate collection: a row that
+    matches an existing card (by cleaned name + card number, or a cached
+    `Card.tcgplayerProductId` from a prior import) just adds TCGPlayer's real Market Price
+    as another `PriceSnapshot`, leaving quantity/condition owned by whichever import first
+    created that card. A row with no match becomes a new card + collection item. This exists
+    because PriceCharting's guide price and TCGPlayer's live Market Price genuinely
+    disagree — sometimes 10x on cheap commons, 20-30% on real chase cards — often enough
+    that seeing only one number is actively misleading; see
+    [Catalog sources](#catalog-sources) below.
   - **Manual add** (`/collection/add`) — search the catalog and add a card by hand.
 - **Download spreadsheet** (`src/lib/collectionExport.ts`, `GET /api/collection/export`,
   the button on `/collection`) — a CSV of the whole collection (name, set, category,
@@ -296,6 +307,11 @@ doesn't carry sports cards):
   cursor-pagination bug, the offer-id type mismatch). If pricing comes back empty, check
   `TCGPLAYER_CATEGORY_ID` in `tcgplayer.ts` against a real `GET /catalog/categories` call
   first.
+  A separate, no-credentials-needed path to the same Market Price data is the **TCGPlayer
+  CSV importer** (`src/lib/tcgplayerImport.ts`) — it works off a manual export from the
+  TCGPlayer app instead of the API, so it's the one actually exercised against real data
+  (238/249 rows auto-matched on a real ~1200-card collection during development). See the
+  "TCGPlayer CSV import" bullet under [How it works](#how-it-works) above.
 - **ManaBox** (`src/lib/manabox.ts`, "Import from ManaBox (CSV)" on `/collection`) — ManaBox
   is a mobile scanning/cataloging app with no public API, so a CSV export
   (collection → export → CSV in the app) is the only integration surface available. Cards
@@ -423,6 +439,13 @@ Scryfall, and pokemontcg.io in parallel — see [Catalog sources](#catalog-sourc
 a Magic or Pokémon card can be found and added without PriceCharting ever being involved.
 Sports and Yu-Gi-Oh cards still come from PriceCharting's catalog alone; no open equivalent
 exists for either yet.
+
+`tcgplayerProductId` is unique for the same reason: the TCGPlayer CSV importer
+(`src/lib/tcgplayerImport.ts`) keys off it to dedupe re-imports, the same way ManaBox import
+keys off `manaboxId`. Unlike the other external refs, most cards get this one populated by
+*matching* rather than by the row that created them — a card created by the PriceCharting
+importer gets its `tcgplayerProductId` filled in the first time a TCGPlayer export row
+matches it by cleaned name + card number, not at creation time.
 
 Pricing was never tied to `priceChartingId` in the first place — `PriceSnapshot`/
 `MarketSale` key off `cardId`, so this change doesn't touch how prices sync at all. A card

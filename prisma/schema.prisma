@@ -130,7 +130,10 @@ model Card {
   // TCGPlayer's own catalog id for this card, once matched — see src/lib/tcgplayer.ts.
   // Cached so sync doesn't re-search the catalog every run; tcgplayerCheckedAt gates how
   // often a failed/stale match gets retried (mirrors variantCheckedAt's staleness pattern).
-  tcgplayerProductId String?   @map("tcgplayer_product_id")
+  // Unique like the other external refs above — a TCGPlayer export import (see
+  // src/lib/tcgplayerImport.ts) keys off this the same way ManaBox import keys off
+  // manaboxId, so a re-import always lands on the same Card instead of drifting.
+  tcgplayerProductId String?   @unique @map("tcgplayer_product_id")
   tcgplayerCheckedAt DateTime? @map("tcgplayer_checked_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
