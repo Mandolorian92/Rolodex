@@ -17,13 +17,37 @@ export const REAL_SALE_SOURCES: ReadonlySet<PriceSource> = new Set([
 ]);
 
 /**
+ * Fallback order, highest-trust first, for when a card has no real sale on file. TCGPlayer's
+ * Market Price is itself computed from recent live-marketplace activity, so it tracks actual
+ * demand more closely than PriceCharting's guide price — a real side-by-side comparison
+ * during development (see README) found PriceCharting running as much as 10x hot on
+ * low-value commons from recent sets, so "prefer whichever synced most recently" was letting
+ * that noise drive the headline number and read as a price move. MANUAL is unused today
+ * (reserved for a future manual price-entry feature) but ranks last regardless — an
+ * unverified typed-in number shouldn't outrank either real catalog source.
+ */
+const FALLBACK_SOURCE_PRIORITY: PriceSource[] = [
+  PriceSource.TCGPLAYER_MARKET,
+  PriceSource.PRICECHARTING_GUIDE,
+  PriceSource.MANUAL,
+];
+
+/**
  * The series that should drive the ticker for one (card, priceType): real sold transactions
- * when there are any, the full series on file (guide price, TCGPlayer Market Price, manual —
- * whatever's there) otherwise. `snapshots` should already be filtered to one priceType.
+ * when there are any; otherwise the single highest-priority source's own series (never a mix
+ * of sources) so "latest" and the 1d/7d/30d trend reflect an actual price move within one
+ * source's history, not two disagreeing sources' guesses taking turns being "latest" as each
+ * one happens to resync. `snapshots` should already be filtered to one priceType.
  */
 export function tickerSeries(snapshots: PriceSnapshot[]): PriceSnapshot[] {
   const sales = snapshots.filter((s) => REAL_SALE_SOURCES.has(s.source));
-  return sales.length > 0 ? sales : snapshots;
+  if (sales.length > 0) return sales;
+
+  for (const source of FALLBACK_SOURCE_PRIORITY) {
+    const bySource = snapshots.filter((s) => s.source === source);
+    if (bySource.length > 0) return bySource;
+  }
+  return snapshots;
 }
 
 export interface SourceQuote {
